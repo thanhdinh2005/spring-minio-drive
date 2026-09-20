@@ -1,0 +1,26 @@
+spring:
+  jpa:
+    show-sql: false
+
+management:
+  endpoint:
+    health:
+      show-details: never
+
+logging:
+  level:
+    root: WARN
+
+application:
+  security:
+    jwt:
+      secret-key: test-secret-key-test-secret-key-test-secret-key
+
+storage:
+  provider: s3
+  endpoint: http://localhost:9000
+  bucket: test-bucket
+  region: test-region
+  access-key: test-access-key
+  secret-key: test-secret-key
+  path-style-access: true

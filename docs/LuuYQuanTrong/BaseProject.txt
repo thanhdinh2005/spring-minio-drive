@@ -1,0 +1,23 @@
+Các lưu ý:
+- Dự án dùng Spring boot 3.x, Security, PostgreSQL, MinIO, Adminer (xem db)
+- Code backend nằm ở /backend
+- Các thiết lập cơ bản ở file README
+- Dự án dùng mô hình MVC cơ bản với:
+ + /entity chứa các lớp data mapping từ db
+ + /service là nơi định nghĩa các interface
+ + /service/impl là nơi thực thi các service (lý do sẽ đề cập sau)
+ + /config: nơi cấu hình cho dự án
+ + /common: định nghĩa các class hay dùng hoặc format mà team theo ví dụ AppResponse
+ + /controller: Lớp controller
+ + /repository: nơi connect db + excute query
+
+- Quy ước tên biến, tên class, tên method như lập trình java cơ bản,
+tên biến có thể dài nhưng phải rõ nghĩa tránh đặt dạng user1, user2, các đoạn code khó hiểu nên comment đầy đủ
+
+- Phần nên biết:
++ phần /resources có các file migration - tương tự như việc sql tạo table
++ có 4 file application, đây là các profile gom config của spring, hỗ trợ các giai đoạn, ví dụ khi chạy local thì chạy profile dev
+nhưng lên production thì buộc chạy prod, file test chỉ dùng trong CICD.
+còn file application thì như file cha cấu hình chung, các file sau là phần ghi đè và cấu hình thêm.
++ /test: nơi viết test, ở đây thầy yêu cầu nên viết 1 integration test, nếu module có nhiều chức năng nhỏ (minor) thì chọn cái bự làm
++ Viết thêm các unit test đủ behavior cho service (không cần test mọi trường hợp khoảng trên 50% 1 method là ok)

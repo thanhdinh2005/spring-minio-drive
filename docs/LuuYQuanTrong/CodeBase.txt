@@ -1,0 +1,22 @@
+Flow cơ bản:
+- Controller (nhận request)
+- Call service (interface)
+- Framework Inject Component phù hợp
+- Service impl xử lý
+- Query DB
+- Trả response
+- Controller mapping theo AppResponse
+
+Lưu ý:
+- Tại sao phải gọi interface mà không gọi thẳng class service được mark @Service. Thì ở đây để thuận tiện cho việc impl và so sánh
+ví dụ chức năng register có thể dùng nhiều kiểu mã hóa password thì không nên code kiểu RegisterServiceBCrypt... mà interface định nghĩa
+hợp đồng buộc các class impl thưc thi (OOP).
+
+- Phần framework hỗ trợ gần như mọi cái mệt nhất của java (connect DB, truy vấn) do đó khi dùng hàm tích hợp,
+thư viện nên ghi chú tay ở file riêng hoặc note nhanh
+
+- Ở version 1 chưa yêu cầu về logging nên có thể bỏ qua nhưng ver2 buộc phải logging kỹ
+- Xây dựng các dto, không trả entity ra response, có thể dùng các lib mapper tự động như MapStruct, hoặc tự map tay (khuyên dùng)
+- Phần repository đặt method theo quy ước, query trả về entity nào thì đặt method ở repo tương ứng, ví dụ cần query user theo email thì
+đặt ở UserRepository do UserRepository extend Jpa có khai báo User (xem trong UserRepository)
+

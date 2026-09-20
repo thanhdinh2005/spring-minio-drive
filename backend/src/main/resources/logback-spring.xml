@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+  <include resource="org/springframework/boot/logging/logback/defaults.xml"/>
+
+  <!-- Tên app / env đọc từ application.yml, có fallback nếu chưa set -->
+  <springProperty scope="context" name="APP_NAME" source="spring.application.name" defaultValue="backend"/>
+  <springProperty scope="context" name="APP_ENV" source="spring.profiles.active" defaultValue="dev"/>
+
+  <!-- ========================================== -->
+  <!-- 1. APPENDER: CONSOLE (Cho DEV - Có màu sắc, có traceId nếu có MDC) -->
+  <!-- ========================================== -->
+  <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder>
+      <pattern>%clr(%d{yyyy-MM-dd HH:mm:ss.SSS}){faint} %clr(%5p) %clr([%15.15t]){faint} %clr(%X{traceId:-}){yellow} %clr(%-40.40logger{39}){cyan} %clr(:){faint} %m%n%wEx</pattern>
+    </encoder>
+  </appender>
+
+  <!-- ========================================== -->
+  <!-- 2. APPENDER: FILE JSON - APP LOG (INFO/WARN/ERROR chung, cho Loki/Grafana) -->
+  <!-- ========================================== -->
+  <appender name="JSON_APP_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+    <file>logs/app-json.log</file>
+
+    <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+      <fileNamePattern>logs/app-json-%d{yyyy-MM-dd}.%i.log</fileNamePattern>
+      <maxFileSize>20MB</maxFileSize>
+      <maxHistory>30</maxHistory>
+      <totalSizeCap>2GB</totalSizeCap>
+    </rollingPolicy>
+
+    <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+      <customFields>{"app_name":"${APP_NAME}", "env":"${APP_ENV}"}</customFields>
+      <!-- Đưa traceId từ MDC (nếu có) thành field riêng trong JSON, dễ query trên Grafana -->
+      <includeMdcKeyName>traceId</includeMdcKeyName>
+    </encoder>
+  </appender>
+
+  <!-- ========================================== -->
+  <!-- 3. APPENDER: FILE JSON - ERROR ONLY (chỉ nhận level ERROR thật sự) -->
+  <!-- ========================================== -->
+  <appender name="JSON_ERROR_FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+    <file>logs/error-json.log</file>
+
+    <filter class="ch.qos.logback.classic.filter.LevelFilter">
+      <level>ERROR</level>
+      <onMatch>ACCEPT</onMatch>
+      <onMismatch>DENY</onMismatch>
+    </filter>
+
+    <rollingPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedRollingPolicy">
+      <fileNamePattern>logs/error-json-%d{yyyy-MM-dd}.%i.log</fileNamePattern>
+      <maxFileSize>10MB</maxFileSize>
+      <maxHistory>30</maxHistory>
+      <totalSizeCap>1GB</totalSizeCap>
+    </rollingPolicy>
+
+    <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+      <customFields>{"app_name":"${APP_NAME}", "env":"${APP_ENV}"}</customFields>
+      <includeMdcKeyName>traceId</includeMdcKeyName>
+    </encoder>
+  </appender>
+
+  <!-- ========================================== -->
+  <!-- 4. ASYNC WRAPPER cho 2 file appender (tránh I/O chặn thread xử lý request) -->
+  <!-- ========================================== -->
+  <appender name="ASYNC_JSON_APP_FILE" class="ch.qos.logback.classic.AsyncAppender">
+    <queueSize>512</queueSize>
+    <discardingThreshold>0</discardingThreshold>
+    <includeCallerData>false</includeCallerData>
+    <neverBlock>true</neverBlock>
+    <appender-ref ref="JSON_APP_FILE"/>
+  </appender>
+
+  <appender name="ASYNC_JSON_ERROR_FILE" class="ch.qos.logback.classic.AsyncAppender">
+    <queueSize>512</queueSize>
+    <discardingThreshold>0</discardingThreshold>
+    <includeCallerData>true</includeCallerData> <!-- giữ stack trace/caller cho lỗi -->
+    <neverBlock>false</neverBlock> <!-- lỗi quan trọng, không nên rớt log -->
+    <appender-ref ref="JSON_ERROR_FILE"/>
+  </appender>
+
+  <!-- ========================================== -->
+  <!-- CẤU HÌNH THEO PROFILE -->
+  <!-- ========================================== -->
+  <springProfile name="dev">
+    <root level="INFO">
+      <appender-ref ref="CONSOLE"/>
+    </root>
+  </springProfile>
+
+  <springProfile name="prod">
+    <root level="INFO">
+      <appender-ref ref="ASYNC_JSON_APP_FILE"/>
+      <appender-ref ref="ASYNC_JSON_ERROR_FILE"/>
+    </root>
+  </springProfile>
+
+  <!-- Fallback: nếu chạy không set profile (test local, CI...) -->
+  <springProfile name="!dev &amp; !prod">
+    <root level="INFO">
+      <appender-ref ref="CONSOLE"/>
+    </root>
+  </springProfile>
+
+</configuration>

@@ -1,0 +1,14 @@
+name: Main Pipeline
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build-test:
+    uses: ./.github/workflows/module-build-test.yml
+
+  docker:
+    needs: build-test
+    uses: ./.github/workflows/module-docker-push.yml
+    secrets: inherit

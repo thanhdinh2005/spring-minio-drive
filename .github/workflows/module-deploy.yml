@@ -1,0 +1,111 @@
+name: Module - Deploy Homelab
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: Docker image version
+        required: true
+        type: string
+
+jobs:
+  deploy:
+    name: Deploy to Homelab
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v2
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Configure SSH
+        env:
+          SSH_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          HOST: ${{ secrets.SERVER_HOST }}
+          USER: ${{ secrets.SSH_USER }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+
+          echo "$SSH_KEY" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+
+          cat <<EOF > ~/.ssh/config
+          Host homelab
+            HostName $HOST
+            User $USER
+            IdentityFile ~/.ssh/id_ed25519
+            StrictHostKeyChecking no
+            ConnectTimeout 10
+          EOF
+
+          chmod 600 ~/.ssh/config
+
+      - name: Deploy Application
+        env:
+          VERSION: ${{ inputs.version }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+        run: |
+          ssh homelab \
+            "VERSION='$VERSION' DOCKERHUB_USERNAME='$DOCKERHUB_USERNAME' bash -s" <<'REMOTE'
+
+          set -e
+
+          echo "=================================="
+          echo "Deploy Version : $VERSION"
+          echo "Image          : $DOCKERHUB_USERNAME/mini-drive-api:$VERSION"
+          echo "=================================="
+
+          cd ~/deployment/mini-drive/app
+
+          export DOCKERHUB_USERNAME="$DOCKERHUB_USERNAME"
+          export APP_VERSION="$VERSION"
+
+          echo "Pull latest image..."
+          docker compose pull backend
+
+          echo "Stopping backend..."
+          docker compose stop -t 30 backend || true
+
+          echo "Starting backend..."
+          docker compose up -d backend
+
+          echo "Waiting for application health..."
+
+          for i in {1..30}; do
+
+            STATUS=$(docker inspect \
+              --format='{{.State.Health.Status}}' \
+              todo_app 2>/dev/null || echo "starting")
+
+            echo "Health status: $STATUS"
+
+            if [ "$STATUS" = "healthy" ]; then
+              echo "Application is healthy."
+              break
+            fi
+
+            if [ "$STATUS" = "unhealthy" ]; then
+              echo "Health check failed."
+              docker compose logs backend --tail=100
+              exit 1
+            fi
+
+            if [ "$i" -eq 30 ]; then
+              echo "Health check timeout."
+              docker compose logs backend --tail=100
+              exit 1
+            fi
+
+            sleep 2
+          done
+
+          echo "Cleaning unused images..."
+          docker image prune -f
+
+          echo ""
+          echo "Deployment completed successfully."
+          REMOTE

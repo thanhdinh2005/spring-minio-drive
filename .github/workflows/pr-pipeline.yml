@@ -1,0 +1,9 @@
+name: PR Pipeline
+
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-test:
+    uses: ./.github/workflows/module-build-test.yml
