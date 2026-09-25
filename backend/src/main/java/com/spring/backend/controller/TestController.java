@@ -1,6 +1,7 @@
 package com.spring.backend.controller;
 
 import com.spring.backend.common.AppResponse;
+import com.spring.backend.dto.test.DocumentDto;
 import com.spring.backend.dto.test.TestRequest;
 import com.spring.backend.dto.test.TestResponse;
 import com.spring.backend.service.TestService;
@@ -8,6 +9,8 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.UUID;
 
 @RestController
 @RequestMapping("/public")
@@ -26,5 +29,12 @@ public class TestController {
     @Valid @RequestBody TestRequest request
     ) {
     return ResponseEntity.ok(AppResponse.success(testService.greeting(request)));
+  }
+
+  @GetMapping("/documents/{documentId}")
+  public ResponseEntity<AppResponse<DocumentDto>> getDocById(
+    @PathVariable UUID documentId
+    ) {
+    return ResponseEntity.ok(AppResponse.success(testService.getDocumentById(documentId)));
   }
 }

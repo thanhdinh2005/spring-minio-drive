@@ -1,7 +1,9 @@
 package com.spring.backend.service.impl;
 
+import com.spring.backend.dto.test.DocumentDto;
 import com.spring.backend.dto.test.TestRequest;
 import com.spring.backend.dto.test.TestResponse;
+import com.spring.backend.entity.Document;
 import com.spring.backend.exception.AppException;
 import com.spring.backend.exception.ErrorCode;
 import com.spring.backend.service.TestService;
@@ -12,6 +14,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Map;
 import java.util.Random;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -20,6 +23,7 @@ import java.util.Random;
 public class TestServiceImpl implements TestService {
 
   // private final TestRepository testRepository;
+  private final DocumentRepository documentRepository;
 
   @Override
   public void sayHello() {
@@ -41,6 +45,16 @@ public class TestServiceImpl implements TestService {
   public TestResponse greeting(TestRequest request) {
     return TestResponse.builder()
       .greeting("Hello user: " + request.getEmail())
+      .build();
+  }
+
+  @Override
+  public DocumentDto getDocumentById(UUID documentId) {
+    Document document = documentRepository.findById(documentId)
+      .orElseThrow(() -> new AppException(ErrorCode.DOCUMENT_NOT_FOUND));
+    return DocumentDto.builder()
+      .id(document.getId())
+      .name(document.getName())
       .build();
   }
 }
