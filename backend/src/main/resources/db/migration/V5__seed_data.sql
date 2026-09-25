@@ -7,7 +7,7 @@ inserted_users AS (
     (gen_random_uuid(), 'nguyenvana@gmail.com', '$2a$10$DScNUF40WpE58tICci93nuhQkvJEg9v02KnfJi8fnReLZgL1W9OR2', 'Nguyễn Văn A', 'ADMIN', 'ACTIVE', 'PREMIUM', 419430400, 10737418240, now() - INTERVAL '30 days', now()),
     (gen_random_uuid(), 'tranthib@gmail.com',  '$2a$10$DScNUF40WpE58tICci93nuhQkvJEg9v02KnfJi8fnReLZgL1W9OR2', 'Trần Thị B',  'USER',  'ACTIVE', 'FREE',  52428800,  104857600,   now() - INTERVAL '25 days', now()),
     (gen_random_uuid(), 'levanc@gmail.com',     '$2a$10$DScNUF40WpE58tICci93nuhQkvJEg9v02KnfJi8fnReLZgL1W9OR2', 'Lê Văn C',    'USER',  'ACTIVE', 'PREMIUM', 209715200, 10737418240,  now() - INTERVAL '20 days', now()),
-    (gen_random_uuid(), 'phamthid@gmail.com',  '$2a$10$DScNUF40WpE58tICci93nuhQkvJEg9v02KnfJi8fnReLZgL1W9OR2', 'Phạm Thị D',  'USER',  'INACTIVE','FREE', 0,         104857600,   now() - INTERVAL '10 days', now()),
+    (gen_random_uuid(), 'phamthid@gmail.com',  '$2a$10$DScNUF40WpE58tICci93nuhQkvJEg9v02KnfJi8fnReLZgL1W9OR2', 'Phạm Thị D',  'USER',  'ACTIVE','FREE', 0,         104857600,   now() - INTERVAL '10 days', now()),
     (gen_random_uuid(), 'hoangvane@gmail.com',  '$2a$10$DScNUF40WpE58tICci93nuhQkvJEg9v02KnfJi8fnReLZgL1W9OR2', 'Hoàng Văn E',  'USER',  'ACTIVE', 'FREE',  10485760,  104857600,   now() - INTERVAL '5 days',  now())
     RETURNING id, email
 ),
