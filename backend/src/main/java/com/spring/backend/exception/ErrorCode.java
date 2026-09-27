@@ -15,10 +15,12 @@ public enum ErrorCode {
   // ===== Folder =====
   FOLDER_NOT_FOUND(HttpStatus.NOT_FOUND, "ERR_FOLDER_001", "Folder not found"),
   FOLDER_ACCESS_DENIED(HttpStatus.FORBIDDEN, "ERR_FOLDER_002", "You don't have access to this folder"),
+  INVALID_FOLDER_NAME(HttpStatus.BAD_REQUEST, "ERR_FOLDER_003", "Folder name contains invalid characters"),
 
   // ===== Document =====
   DOCUMENT_NOT_FOUND(HttpStatus.NOT_FOUND, "ERR_DOC_001", "Document not found"),
   DOCUMENT_TOO_LARGE(HttpStatus.PAYLOAD_TOO_LARGE, "ERR_DOC_002", "File exceeds storage limit"),
+  DOCUMENT_ACCESS_DENIED(HttpStatus.FORBIDDEN, "ERR_DOC_003", "You don't have access to this document"),
 
   // ===== Permission =====
   PERMISSION_NOT_FOUND(HttpStatus.NOT_FOUND, "ERR_PERM_001", "Permission not found"),
