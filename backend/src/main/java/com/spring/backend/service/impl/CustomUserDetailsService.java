@@ -26,7 +26,7 @@ public class CustomUserDetailsService implements UserDetailsService {
       .orElseThrow(() -> new UsernameNotFoundException("User not found: " + email));
 
     Set<GrantedAuthority> authority = Set.of(
-      new SimpleGrantedAuthority(user.getRole().name())
+      new SimpleGrantedAuthority("ROLE_" + user.getRole().name())
     );
 
     return new CustomUserDetails(user, authority);
