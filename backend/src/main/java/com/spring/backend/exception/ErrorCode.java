@@ -31,6 +31,7 @@ public enum ErrorCode {
   MALFORMED_REQUEST(HttpStatus.BAD_REQUEST, "ERR_REQ_002", "Malformed request body"),
   METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED, "ERR_REQ_003", "HTTP method not supported"),
   NOT_FOUND(HttpStatus.NOT_FOUND, "ERR_REQ_004", "Resource not found"),
+  UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "ERR_REQ_005", "Incorrect email or password"),
 
   // ===== System =====
   INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "ERR_SYS_001", "An unexpected error occurred. Please try again later.");
