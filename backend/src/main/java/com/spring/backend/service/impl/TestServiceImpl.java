@@ -9,8 +9,11 @@ import com.spring.backend.exception.ErrorCode;
 import com.spring.backend.service.TestService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.HeadBucketRequest;
 
 import java.util.Map;
 import java.util.Random;
@@ -24,6 +27,10 @@ public class TestServiceImpl implements TestService {
 
   // private final TestRepository testRepository;
   private final DocumentRepository documentRepository;
+  private final S3Client s3Client;
+
+  @Value("${storage.bucket}")
+  private String bucket;
 
   @Override
   public void sayHello() {
@@ -43,6 +50,18 @@ public class TestServiceImpl implements TestService {
 
   @Override
   public TestResponse greeting(TestRequest request) {
+    HeadBucketRequest test = HeadBucketRequest.builder()
+      .bucket(bucket)
+      .build();
+
+    s3Client.headBucket(test);
+
+    System.out.println("================================");
+    System.out.println("S3 connection successful!");
+    System.out.println("Endpoint: " + s3Client.serviceClientConfiguration());
+    System.out.println("Bucket: " + bucket);
+    System.out.println("================================");
+
     return TestResponse.builder()
       .greeting("Hello user: " + request.getEmail())
       .build();
