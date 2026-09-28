@@ -28,7 +28,7 @@ jobs:
           GIT_SHA: ${{ inputs.git-sha }}
           VERSION: ${{ inputs.version }}
         run: |
-          IMAGE="$DOCKERHUB_USERNAME/spring-api"
+          IMAGE="$DOCKERHUB_USERNAME/mini-drive-api"
 
           echo "Promoting $IMAGE:sha-$GIT_SHA -> $VERSION / latest"
 
