@@ -34,7 +34,7 @@ application:
       secret-key: ${SECRET_KEY}
 
 storage:
-  provider: s3
+  provider: ${STORAGE_PROVIDER:s3}
   endpoint: ${STORAGE_ENDPOINT}
   bucket: ${STORAGE_BUCKET}
   region: ${STORAGE_REGION}
