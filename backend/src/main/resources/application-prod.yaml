@@ -40,4 +40,4 @@ storage:
   region: ${STORAGE_REGION}
   access-key: ${STORAGE_ACCESS_KEY}
   secret-key: ${STORAGE_SECRET_KEY}
-  path-style-access: false
+  path-style-access: ${STORAGE_PATH_STYLE_ACCESS:true}
