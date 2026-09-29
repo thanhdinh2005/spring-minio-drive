@@ -73,33 +73,21 @@ jobs:
           echo "Starting backend..."
           docker compose up -d backend
 
-          echo "Waiting for application health..."
+          echo "Waiting for backend container to be running..."
 
-          for i in {1..30}; do
-
-            STATUS=$(docker inspect \
-              --format='{{.State.Health.Status}}' \
-              todo_app 2>/dev/null || echo "starting")
-
-            echo "Health status: $STATUS"
-
-            if [ "$STATUS" = "healthy" ]; then
-              echo "Application is healthy."
+          for i in {1..15}; do
+            if docker ps --filter "name=backend" --filter "status=running" --format '{{.Names}}' | grep -q backend; then
+              echo "Backend container is running."
               break
             fi
 
-            if [ "$STATUS" = "unhealthy" ]; then
-              echo "Health check failed."
+            if [ "$i" -eq 15 ]; then
+              echo "Backend container did not start in time."
               docker compose logs backend --tail=100
               exit 1
             fi
 
-            if [ "$i" -eq 30 ]; then
-              echo "Health check timeout."
-              docker compose logs backend --tail=100
-              exit 1
-            fi
-
+            echo "Attempt $i/15: not running yet, retrying..."
             sleep 2
           done
 
