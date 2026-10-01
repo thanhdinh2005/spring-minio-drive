@@ -51,10 +51,28 @@ public class FolderController {
         return ResponseEntity.ok(AppResponse.success(service.findById(folderId)));
     }
 
-    @GetMapping("/{id}")
-    public ResponseEntity<AppResponse<FolderDto>> getFolderById(
-            @PathVariable("id") UUID id
-    ) {
-        return ResponseEntity.ok(AppResponse.success(folderService.getFolderById(id)));
+    @PostMapping
+    public ResponseEntity<?> create(
+        @RequestBody FolderCreateDto dto,
+        @AuthenticationPrincipal CustomUserDetails me
+    ){
+        return ResponseEntity.ok(AppResponse.success(service.create(dto, me.getId())));
+    }
+
+    @PutMapping 
+    public ResponseEntity<?> update(
+        @RequestBody FolderUpdateDto dto,
+        @AuthenticationPrincipal CustomUserDetails me
+    ){
+        return ResponseEntity.ok(AppResponse.success(service.update(dto, me.getId())));
+    }
+
+    @DeleteMapping 
+    public ResponseEntity<?> deleteSoft(
+        @RequestBody List<UUID> ids,
+        @AuthenticationPrincipal CustomUserDetails me
+    ){
+        service.deleteSoft(ids, me.getId());
+        return ResponseEntity.ok(AppResponse.success(null));
     }
 }
