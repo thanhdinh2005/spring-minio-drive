@@ -2,9 +2,7 @@ package com.spring.backend.common;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.spring.backend.exception.ErrorCode;
-import lombok.Builder;
 import lombok.Getter;
-import org.springframework.http.HttpStatus;
 
 import java.time.Instant;
 
