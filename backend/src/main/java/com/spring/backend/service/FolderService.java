@@ -1,41 +1,23 @@
 package com.spring.backend.service;
 
-import com.spring.backend.dto.folder.FolderDto;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
-import com.spring.backend.entity.Folder;
-import com.spring.backend.exception.AppException;
-import com.spring.backend.exception.ErrorCode;
-import com.spring.backend.repository.FolderRepository;
-import lombok.RequiredArgsConstructor;
-
-import java.util.Optional;
+import java.util.List;
 import java.util.UUID;
 
-@Service
-@RequiredArgsConstructor
-public class FolderService {
+import com.spring.backend.common.PageResponse;
+import com.spring.backend.dto.folder.FolderCreateDto;
+import com.spring.backend.dto.folder.FolderDto;
+import com.spring.backend.dto.folder.FolderUpdateDto;
 
-    private final FolderRepository folderRepository;
+public interface FolderService {
+    public FolderDto create(FolderCreateDto dto, UUID ownerId);
 
-    @Transactional(readOnly = true)
-    public FolderDto getFolderById(UUID id) {
-        Optional<Folder> folderResult = folderRepository.findById(id);
-        if (folderResult.isEmpty()) {
-            throw new AppException(ErrorCode.FOLDER_NOT_FOUND);
-        }
+    public FolderDto update(FolderUpdateDto dto, UUID ownerId);
 
-        Folder folder = folderResult.get();
-        return FolderDto.builder()
-                .id(folder.getId())
-                .name(folder.getName())
-                .ownerId(folder.getOwner().getId())
-                .parentFolderId(folder.getParentFolder() == null
-                        ? null
-                        : folder.getParentFolder().getId())
-                .createdAt(folder.getCreatedAt())
-                .updatedAt(folder.getUpdatedAt())
-                .build();
-    }
+    public void deleteSoft(List<UUID> ids, UUID ownerId);
+
+    public FolderDto findById(UUID id);
+
+    public PageResponse<FolderDto> findAllByOwnerIdInRoot(int pageNo, int pageSize, String sortBy, String sortDir, UUID ownerId);
+
+    public PageResponse<FolderDto> findAllByOwnerIdAndParentFolderId(int pageNo, int pageSize, String sortBy, String sortDir, UUID ownerId, UUID parentFolderId);
 }
