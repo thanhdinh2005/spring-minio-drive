@@ -1,6 +1,6 @@
 CREATE TABLE folders (
     id                UUID PRIMARY KEY,
-    name              VARCHAR(255) NOT NULL,
+    name              VARCHAR(255) NOT NULL UNIQUE,
     owner_id          UUID         NOT NULL REFERENCES users(id),
     parent_folder_id  UUID         REFERENCES folders(id), -- NULL = thư mục gốc
     created_at        TIMESTAMP    NOT NULL DEFAULT now(),
