@@ -8,7 +8,6 @@ import com.spring.backend.exception.AppException;
 import com.spring.backend.exception.ErrorCode;
 import com.spring.backend.exception.GlobalExceptionHandler;
 import com.spring.backend.service.AuthService;
-import com.spring.backend.service.TestLongService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
@@ -40,7 +39,6 @@ public class AuthControllerTest {
     private AuthController authController;
 
     @Mock private AuthService authService;
-    @Mock private TestLongService testLongService;
 
     private MockMvc mockMvc;
     private ObjectMapper objectMapper;
