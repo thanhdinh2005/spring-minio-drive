@@ -1,13 +1,12 @@
 package com.spring.backend.service.impl;
 
-import com.spring.backend.dto.auth.UserDto;
+import com.spring.backend.dto.auth.UserResponse;
 import com.spring.backend.entity.User;
 import com.spring.backend.exception.AppException;
 import com.spring.backend.exception.ErrorCode;
 import com.spring.backend.repository.UserRepository;
-import com.spring.backend.service.TestLongService;
+import com.spring.backend.service.UserService;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,18 +15,20 @@ import java.util.UUID;
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
-@Slf4j
-public class TestLongServiceImpl implements TestLongService {
-
+public class UserServiceImpl implements UserService {
   private final UserRepository userRepository;
 
   @Override
-  public UserDto getUserById(UUID id) {
-    User user = userRepository.findById(id).orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-    return UserDto.builder()
+  public UserResponse getProfile(UUID id) {
+    User user = userRepository.findById(id)
+      .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+    return UserResponse.builder()
       .id(user.getId())
-      .displayName(user.getDisplayName())
       .email(user.getEmail())
+      .displayName(user.getDisplayName())
+      .role(user.getRole())
+      .plan(user.getPlan())
       .build();
   }
 }
