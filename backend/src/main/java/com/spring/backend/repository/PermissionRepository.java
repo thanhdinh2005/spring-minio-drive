@@ -1,0 +1,20 @@
+package com.spring.backend.repository;
+
+import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+
+import org.springframework.data.jpa.repository.EntityGraph;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import com.spring.backend.entity.Permission;
+
+public interface PermissionRepository extends JpaRepository<Permission, UUID> {
+
+    Optional<Permission> findByFolder_IdAndSharedWithUser_Id(UUID folderId, UUID sharedWithUserId);
+
+    @EntityGraph(attributePaths = {"sharedWithUser", "grantedBy"})
+    List<Permission> findByFolder_IdAndSharedWithUserIsNotNullOrderByCreatedAtDesc(UUID folderId);
+
+
+}
