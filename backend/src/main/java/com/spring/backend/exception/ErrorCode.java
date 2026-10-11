@@ -27,14 +27,19 @@ public enum ErrorCode {
   INVALID_SHARE_TARGET(HttpStatus.BAD_REQUEST, "ERR_PERM_002",
     "Must specify either a user or generate a public link, not both"),
   CANNOT_SHARE_WITHOUT_OWNERSHIP(HttpStatus.FORBIDDEN, "ERR_PERM_003", "Only the owner can share this folder"),
-
+  INVALID_SHARE_PERMISSION(HttpStatus.BAD_REQUEST, "ERR_PERM_004",  "Share permission must be VIEW or EDIT"),
+  CANNOT_SHARE_WITH_OWNER(HttpStatus.BAD_REQUEST, "ERR_PERM_005", "Cannot share a folder with its owner"),
   // ===== Request / fallback =====
   VALIDATION_ERROR(HttpStatus.BAD_REQUEST, "ERR_REQ_001", "Invalid request"),
   MALFORMED_REQUEST(HttpStatus.BAD_REQUEST, "ERR_REQ_002", "Malformed request body"),
   METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED, "ERR_REQ_003", "HTTP method not supported"),
   NOT_FOUND(HttpStatus.NOT_FOUND, "ERR_REQ_004", "Resource not found"),
   UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "ERR_REQ_005", "Incorrect email or password"),
-
+SHARE_PERMISSION_CONFLICT(
+    HttpStatus.CONFLICT,
+    "ERR_PERM_006",
+    "Sharing was changed concurrently. Please reload and try again"
+),
   // ===== System =====
   INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "ERR_SYS_001", "An unexpected error occurred. Please try again later.");
 
