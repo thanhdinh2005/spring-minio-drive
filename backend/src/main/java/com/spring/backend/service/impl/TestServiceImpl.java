@@ -6,6 +6,7 @@ import com.spring.backend.dto.test.TestResponse;
 import com.spring.backend.entity.Document;
 import com.spring.backend.exception.AppException;
 import com.spring.backend.exception.ErrorCode;
+import com.spring.backend.repository.DocumentRepository;
 import com.spring.backend.service.TestService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
