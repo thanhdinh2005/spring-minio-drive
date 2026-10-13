@@ -3,11 +3,15 @@ package com.spring.backend.dto.auth;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 @Data
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class LoginRequest {
   @Email(message = "Email must be valid")
   @Size(min = 5, max = 20, message = "Email cannot exceed 20 characters and at least 5 characters")

@@ -15,7 +15,7 @@ import lombok.experimental.SuperBuilder;
 
 //annotation
 //Đánh dấu đây là một entity, Hibernate sẽ ánh xạ nó với bảng DB.
-@Entity 
+@Entity
 //Chỉ định tên bảng trong DB là folders.
 @Table(name = "folders")
 //Lombok sinh tự động getter/setter cho các field.
@@ -35,13 +35,7 @@ public class Folder extends BaseEntity {
   @JoinColumn(name = "owner_id", nullable = false)
   private User owner;
 
-  @ManyToOne(fetch = FetchType.LAZY)
-  @JoinColumn(name = "parent_folder_id", nullable = true)
-  private Folder parentFolder;
+  @Column(name = "parent_folder")
+  private String parentFolder;
 
-  @Column(name = "is_deleted")
-  private int isDeleted;
-
-  @Column(name= "deleted_at")
-  private Instant deletedAt;
 }
