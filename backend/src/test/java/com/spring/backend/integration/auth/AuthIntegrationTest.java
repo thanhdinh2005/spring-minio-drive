@@ -1,6 +1,6 @@
 package com.spring.backend.integration.auth;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import tools.jackson.databind.ObjectMapper;
 import com.spring.backend.dto.auth.LoginRequest;
 import com.spring.backend.entity.User;
 import com.spring.backend.entity.enums.Plan;
