@@ -4,20 +4,29 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import com.spring.backend.common.PageResponse;
 import com.spring.backend.common.utils.StorageNameUtils;
 import com.spring.backend.dto.folder.CreateFolderRequest;
+import com.spring.backend.dto.folder.DocumentSummaryResponse;
+import com.spring.backend.dto.folder.FolderContentsResponse;
 import com.spring.backend.dto.folder.FolderResponse;
+import com.spring.backend.dto.folder.FolderSummaryResponse;
+import com.spring.backend.entity.Document;
 import com.spring.backend.entity.Folder;
 import com.spring.backend.entity.User;
-import com.spring.backend.entity.enums.PermissionType;
 import com.spring.backend.exception.AppException;
 import com.spring.backend.exception.ErrorCode;
+import com.spring.backend.repository.DocumentRepository;
 import com.spring.backend.repository.FolderRepository;
-import com.spring.backend.repository.PermissionRepository;
 import com.spring.backend.repository.UserRepository;
+import com.spring.backend.service.FolderAccessService;
 import com.spring.backend.service.FolderService;
 
 import lombok.RequiredArgsConstructor;
@@ -30,8 +39,9 @@ import lombok.extern.slf4j.Slf4j;
 public class FolderServiceImpl implements FolderService {
 
   private final FolderRepository folderRepository;
-  private final PermissionRepository permissionRepository;
+  private final DocumentRepository documentRepository;
   private final UserRepository userRepository;
+  private final FolderAccessService folderAccessService;
 
   @Override
   @Transactional
@@ -42,15 +52,11 @@ public class FolderServiceImpl implements FolderService {
         Map.of("name", String.valueOf(request.getName())));
     }
 
-    // 2. Nếu có parent: kiểm tra tồn tại + quyền EDIT trên parent
+    // 2. Nếu có parent: kiểm tra tồn tại (404) + quyền EDIT trên parent (403)
     Folder parent = null;
     if (request.getParentFolderId() != null) {
-      parent = folderRepository.findById(request.getParentFolderId())
-        .orElseThrow(() -> new AppException(ErrorCode.FOLDER_NOT_FOUND));
-
-      if (!resolvePermission(parent, ownerId).canEdit()) {
-        throw new AppException(ErrorCode.FOLDER_ACCESS_DENIED);
-      }
+      parent = folderAccessService.requireFolder(request.getParentFolderId());
+      folderAccessService.requireEdit(parent, ownerId);
     }
 
     User owner = userRepository.findById(ownerId)
@@ -71,7 +77,40 @@ public class FolderServiceImpl implements FolderService {
     Folder saved = folderRepository.save(folder);
     log.debug("Created folder {} (owner={}, parent={})", saved.getId(), ownerId, parentFolderId);
 
-    return toResponse(saved);
+    return toFolderResponse(saved);
+  }
+
+  @Override
+  public FolderContentsResponse getContents(
+    UUID folderId,
+    UUID userId,
+    int pageNo,
+    int pageSize,
+    String sortBy,
+    String sortDir
+  ) {
+    // 1. Lấy folder (404) + check quyền VIEW (403)
+    Folder folder = folderAccessService.requireFolder(folderId);
+    folderAccessService.requireView(folder, userId);
+
+    Pageable pageable = buildPageable(pageNo, pageSize, sortBy, sortDir);
+
+    // 2. Lấy folder con + document con trực tiếp (phân trang chung một bộ tham số)
+    Page<Folder> subFolders = folderRepository.findByParentFolder(folder.getId().toString(), pageable);
+    Page<Document> documents = documentRepository.findByFolder_Id(folder.getId(), pageable);
+
+    return FolderContentsResponse.builder()
+      .folder(toFolderSummary(folder))
+      .subFolders(PageResponse.from(subFolders.map(this::toFolderSummary)))
+      .documents(PageResponse.from(documents.map(this::toDocumentSummary)))
+      .build();
+  }
+
+  private Pageable buildPageable(int pageNo, int pageSize, String sortBy, String sortDir) {
+    Sort sort = sortDir.equalsIgnoreCase(Sort.Direction.DESC.name())
+      ? Sort.by(sortBy).descending()
+      : Sort.by(sortBy).ascending();
+    return PageRequest.of(pageNo, pageSize, sort);
   }
 
   /**
@@ -87,47 +126,7 @@ public class FolderServiceImpl implements FolderService {
     return siblings.stream().map(Folder::getName).toList();
   }
 
-  /**
-   * Suy ra quyền hiệu lực của user trên folder theo cơ chế kế thừa từ cha:
-   * - user là owner của folder (hoặc của tổ tiên) -> OWNER
-   * - ngược lại lấy Permission gần nhất theo chuỗi parent_folder
-   */
-  private PermissionType resolvePermission(Folder folder, UUID userId) {
-    PermissionType effective = PermissionType.NONE;
-    Folder current = folder;
-
-    while (current != null) {
-      if (current.getOwner() != null && userId.equals(current.getOwner().getId())) {
-        return PermissionType.OWNER;
-      }
-
-      PermissionType direct = permissionRepository
-        .findByFolder_IdAndSharedWithUser_Id(current.getId(), userId)
-        .map(permission -> permission.getPermissionType())
-        .orElse(PermissionType.NONE);
-
-      // Ưu tiên EDIT hơn VIEW (không dùng PermissionType.max vì NONE có ordinal cao hơn EDIT)
-      if (direct == PermissionType.EDIT) {
-        effective = PermissionType.EDIT;
-      } else if (direct == PermissionType.VIEW && effective == PermissionType.NONE) {
-        effective = PermissionType.VIEW;
-      }
-
-      current = findParent(current);
-    }
-
-    return effective;
-  }
-
-  private Folder findParent(Folder folder) {
-    String parentFolderId = folder.getParentFolder();
-    if (parentFolderId == null) {
-      return null;
-    }
-    return folderRepository.findById(UUID.fromString(parentFolderId)).orElse(null);
-  }
-
-  private FolderResponse toResponse(Folder folder) {
+  private FolderResponse toFolderResponse(Folder folder) {
     return FolderResponse.builder()
       .id(folder.getId())
       .name(folder.getName())
@@ -135,6 +134,22 @@ public class FolderServiceImpl implements FolderService {
       .ownerId(folder.getOwner() == null ? null : folder.getOwner().getId())
       .updatedAt(folder.getUpdatedAt())
       .createdAt(folder.getCreatedAt())
+      .build();
+  }
+
+  private FolderSummaryResponse toFolderSummary(Folder folder) {
+    return FolderSummaryResponse.builder()
+      .id(folder.getId())
+      .name(folder.getName())
+      .build();
+  }
+
+  private DocumentSummaryResponse toDocumentSummary(Document document) {
+    return DocumentSummaryResponse.builder()
+      .id(document.getId())
+      .name(document.getName())
+      .size(document.getSize())
+      .mimeType(document.getMimeType())
       .build();
   }
 }
