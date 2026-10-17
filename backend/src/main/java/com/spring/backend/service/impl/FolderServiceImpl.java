@@ -15,6 +15,7 @@ import com.spring.backend.dto.folder.DocumentSummaryResponse;
 import com.spring.backend.dto.folder.FolderContentsResponse;
 import com.spring.backend.dto.folder.FolderResponse;
 import com.spring.backend.dto.folder.FolderSummaryResponse;
+import com.spring.backend.dto.folder.UpdateFolderRequest;
 import com.spring.backend.entity.Document;
 import com.spring.backend.entity.Folder;
 import com.spring.backend.entity.User;
@@ -141,6 +142,78 @@ public class FolderServiceImpl implements FolderService {
 
   @Override
   @Transactional
+  public FolderResponse update(UUID folderId, UpdateFolderRequest request, UUID userId) {
+    // 1. Lấy folder (404)
+    Folder folder = folderAccessService.requireFolder(folderId);
+
+    // 2. Cần quyền EDIT trên vị trí cũ (403)
+    folderAccessService.requireEdit(folder, userId);
+
+    boolean rename = request.getName() != null;
+    boolean moveToRoot = Boolean.TRUE.equals(request.getMoveToRoot());
+    boolean moveToParent = request.getParentFolderId() != null;
+
+    // 3. Không có gì để thay đổi -> 400
+    if (!rename && !moveToRoot && !moveToParent) {
+      throw new AppException(ErrorCode.VALIDATION_ERROR);
+    }
+
+    // 4. Gửi đồng thời moveToRoot và parentFolderId -> mơ hồ -> 400
+    if (moveToRoot && moveToParent) {
+      throw new AppException(ErrorCode.VALIDATION_ERROR);
+    }
+
+    // 5. Xác định parent đích (null = gốc) và cần quyền EDIT trên đích khi di chuyển
+    Folder targetParent = null;
+    if (moveToParent) {
+      targetParent = folderAccessService.requireFolder(request.getParentFolderId());
+      folderAccessService.requireEdit(targetParent, userId);
+
+      // Chống cycle: đích không được là chính nó hoặc hậu duệ của nó
+      if (isDescendantOf(targetParent, folder.getId())) {
+        throw new AppException(ErrorCode.VALIDATION_ERROR);
+      }
+    }
+
+    // 6. Validate tên mới (nếu đổi tên)
+    String desiredName = rename ? request.getName() : folder.getName();
+    if (rename && !StorageNameUtils.isValidStorageName(desiredName)) {
+      throw new AppException(ErrorCode.INVALID_FOLDER_NAME,
+        Map.of("name", String.valueOf(desiredName)));
+    }
+
+    // 7. Cấp dùng để kiểm tra trùng tên: cấp đích khi di chuyển, ngược lại là cấp hiện tại
+    Folder nameParent;
+    if (moveToRoot) {
+      nameParent = null;
+    } else if (moveToParent) {
+      nameParent = targetParent;
+    } else {
+      nameParent = folder.getParentFolder() == null
+        ? null
+        : folderAccessService.requireFolder(UUID.fromString(folder.getParentFolder()));
+    }
+
+    // 8. Tự sinh tên duy nhất trong cấp đích (loại trừ chính folder này: abc -> abc (1))
+    String uniqueName = StorageNameUtils.generateUniqueName(
+      findSiblingNamesExcluding(nameParent, folder.getOwner().getId(), folder.getId()), desiredName);
+
+    // 9. Cập nhật và lưu
+    folder.setName(uniqueName);
+    if (moveToRoot) {
+      folder.setParentFolder(null);
+    } else if (moveToParent) {
+      folder.setParentFolder(targetParent.getId().toString());
+    }
+
+    Folder saved = folderRepository.save(folder);
+    log.debug("Updated folder {} (name={}, parent={})", saved.getId(), saved.getName(), saved.getParentFolder());
+
+    return toFolderResponse(saved);
+  }
+
+  @Override
+  @Transactional
   public void deleteHard(UUID folderId, UUID userId) {
     // 1. Lấy folder (404) + chỉ OWNER mới được xóa (403; quyền EDIT được chia sẻ không cho xóa)
     Folder folder = folderAccessService.requireFolder(folderId);
@@ -180,6 +253,41 @@ public class FolderServiceImpl implements FolderService {
       : folderRepository.findByParentFolder(parent.getId().toString());
 
     return siblings.stream().map(Folder::getName).toList();
+  }
+
+  /**
+   * Danh sách tên folder cùng cấp đích (loại trừ chính folder đang cập nhật),
+   * dùng để sinh tên duy nhất khi đổi tên/di chuyển.
+   * - Cấp gốc: chỉ xét folder gốc của owner sở hữu folder.
+   * - Cấp con: xét tất cả folder con của parent.
+   */
+  private List<String> findSiblingNamesExcluding(Folder parent, UUID rootOwnerId, UUID excludeFolderId) {
+    List<Folder> siblings = parent == null
+      ? folderRepository.findByOwner_IdAndParentFolderIsNull(rootOwnerId)
+      : folderRepository.findByParentFolder(parent.getId().toString());
+
+    return siblings.stream()
+      .filter(sibling -> !sibling.getId().equals(excludeFolderId))
+      .map(Folder::getName)
+      .toList();
+  }
+
+  /**
+   * Kiểm tra candidate có phải là chính folder gốc hoặc hậu duệ của nó không
+   * (đi ngược từ candidate lên các tổ tiên). Dùng để chặn di chuyển gây cycle.
+   */
+  private boolean isDescendantOf(Folder candidate, UUID ancestorId) {
+    Folder current = candidate;
+    while (current != null) {
+      if (current.getId().equals(ancestorId)) {
+        return true;
+      }
+      String parentId = current.getParentFolder();
+      current = parentId == null
+        ? null
+        : folderRepository.findById(UUID.fromString(parentId)).orElse(null);
+    }
+    return false;
   }
 
   private FolderResponse toFolderResponse(Folder folder) {

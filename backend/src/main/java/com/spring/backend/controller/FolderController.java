@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -18,6 +19,7 @@ import com.spring.backend.common.AppResponse;
 import com.spring.backend.dto.folder.CreateFolderRequest;
 import com.spring.backend.dto.folder.FolderContentsResponse;
 import com.spring.backend.dto.folder.FolderResponse;
+import com.spring.backend.dto.folder.UpdateFolderRequest;
 import com.spring.backend.security.CustomUserDetails;
 import com.spring.backend.service.FolderService;
 
@@ -52,6 +54,16 @@ public class FolderController {
   ) {
     FolderContentsResponse response = folderService.getContents(
       id, me.getId(), pageNo, pageSize, sortBy, sortDir);
+    return ResponseEntity.ok(AppResponse.success(response));
+  }
+
+  @PatchMapping("/{id}")
+  public ResponseEntity<AppResponse<FolderResponse>> update(
+    @PathVariable UUID id,
+    @RequestBody UpdateFolderRequest request,
+    @AuthenticationPrincipal CustomUserDetails me
+  ) {
+    FolderResponse response = folderService.update(id, request, me.getId());
     return ResponseEntity.ok(AppResponse.success(response));
   }
 

@@ -25,6 +25,7 @@ import com.spring.backend.dto.folder.DocumentSummaryResponse;
 import com.spring.backend.dto.folder.FolderContentsResponse;
 import com.spring.backend.dto.folder.FolderResponse;
 import com.spring.backend.dto.folder.FolderSummaryResponse;
+import com.spring.backend.dto.folder.UpdateFolderRequest;
 import com.spring.backend.entity.User;
 import com.spring.backend.entity.enums.Plan;
 import com.spring.backend.entity.enums.Role;
@@ -43,6 +44,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -296,6 +298,136 @@ class FolderControllerTest {
         .willThrow(new AppException(ErrorCode.FOLDER_ACCESS_DENIED));
 
       mockMvc.perform(get("/folders/{id}/contents", folderId))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.success").value(false))
+        .andExpect(jsonPath("$.code").value(ErrorCode.FOLDER_ACCESS_DENIED.getCode()));
+    }
+  }
+
+  @Nested
+  @DisplayName("PATCH /folders/{id}")
+  class UpdateTests {
+
+    @Test
+    @DisplayName("đổi tên folder thành công → 200")
+    void shouldReturn200_whenRename() throws Exception {
+      UUID folderId = UUID.randomUUID();
+      FolderResponse response = FolderResponse.builder()
+        .id(folderId)
+        .name("Tên mới")
+        .parentFolderId(null)
+        .ownerId(ownerId)
+        .build();
+      given(folderService.update(eq(folderId), any(UpdateFolderRequest.class), eq(ownerId)))
+        .willReturn(response);
+
+      mockMvc.perform(patch("/folders/{id}", folderId)
+          .contentType(MediaType.APPLICATION_JSON)
+          .content("{\"name\":\"Tên mới\"}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.success").value(true))
+        .andExpect(jsonPath("$.data.id").value(folderId.toString()))
+        .andExpect(jsonPath("$.data.name").value("Tên mới"));
+
+      verify(folderService).update(eq(folderId), any(UpdateFolderRequest.class), eq(ownerId));
+    }
+
+    @Test
+    @DisplayName("di chuyển folder vào folder khác → 200 với parentFolderId mới")
+    void shouldReturn200_whenMove() throws Exception {
+      UUID folderId = UUID.randomUUID();
+      UUID destId = UUID.randomUUID();
+      FolderResponse response = FolderResponse.builder()
+        .id(folderId)
+        .name("Con")
+        .parentFolderId(destId)
+        .ownerId(ownerId)
+        .build();
+      given(folderService.update(eq(folderId), any(UpdateFolderRequest.class), eq(ownerId)))
+        .willReturn(response);
+
+      mockMvc.perform(patch("/folders/{id}", folderId)
+          .contentType(MediaType.APPLICATION_JSON)
+          .content("{\"parentFolderId\":\"" + destId + "\"}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.parentFolderId").value(destId.toString()));
+    }
+
+    @Test
+    @DisplayName("di chuyển folder về gốc (moveToRoot) → 200 với parentFolderId null")
+    void shouldReturn200_whenMoveToRoot() throws Exception {
+      UUID folderId = UUID.randomUUID();
+      FolderResponse response = FolderResponse.builder()
+        .id(folderId)
+        .name("Con")
+        .parentFolderId(null)
+        .ownerId(ownerId)
+        .build();
+      given(folderService.update(eq(folderId), any(UpdateFolderRequest.class), eq(ownerId)))
+        .willReturn(response);
+
+      mockMvc.perform(patch("/folders/{id}", folderId)
+          .contentType(MediaType.APPLICATION_JSON)
+          .content("{\"moveToRoot\":true}"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.parentFolderId").value(org.hamcrest.Matchers.nullValue()));
+    }
+
+    @Test
+    @DisplayName("tên chứa ký tự không hợp lệ → 400 INVALID_FOLDER_NAME")
+    void shouldReturn400_whenNameInvalid() throws Exception {
+      UUID folderId = UUID.randomUUID();
+      given(folderService.update(eq(folderId), any(UpdateFolderRequest.class), eq(ownerId)))
+        .willThrow(new AppException(ErrorCode.INVALID_FOLDER_NAME));
+
+      mockMvc.perform(patch("/folders/{id}", folderId)
+          .contentType(MediaType.APPLICATION_JSON)
+          .content("{\"name\":\"a/b\"}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.success").value(false))
+        .andExpect(jsonPath("$.code").value(ErrorCode.INVALID_FOLDER_NAME.getCode()));
+    }
+
+    @Test
+    @DisplayName("không có gì để thay đổi → 400 VALIDATION_ERROR")
+    void shouldReturn400_whenNothingToUpdate() throws Exception {
+      UUID folderId = UUID.randomUUID();
+      given(folderService.update(eq(folderId), any(UpdateFolderRequest.class), eq(ownerId)))
+        .willThrow(new AppException(ErrorCode.VALIDATION_ERROR));
+
+      mockMvc.perform(patch("/folders/{id}", folderId)
+          .contentType(MediaType.APPLICATION_JSON)
+          .content("{}"))
+        .andExpect(status().isBadRequest())
+        .andExpect(jsonPath("$.success").value(false))
+        .andExpect(jsonPath("$.code").value(ErrorCode.VALIDATION_ERROR.getCode()));
+    }
+
+    @Test
+    @DisplayName("folder không tồn tại → 404 FOLDER_NOT_FOUND")
+    void shouldReturn404_whenFolderNotFound() throws Exception {
+      UUID folderId = UUID.randomUUID();
+      given(folderService.update(eq(folderId), any(UpdateFolderRequest.class), eq(ownerId)))
+        .willThrow(new AppException(ErrorCode.FOLDER_NOT_FOUND));
+
+      mockMvc.perform(patch("/folders/{id}", folderId)
+          .contentType(MediaType.APPLICATION_JSON)
+          .content("{\"name\":\"Tên mới\"}"))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.success").value(false))
+        .andExpect(jsonPath("$.code").value(ErrorCode.FOLDER_NOT_FOUND.getCode()));
+    }
+
+    @Test
+    @DisplayName("không có quyền EDIT → 403 FOLDER_ACCESS_DENIED")
+    void shouldReturn403_whenNoEditPermission() throws Exception {
+      UUID folderId = UUID.randomUUID();
+      given(folderService.update(eq(folderId), any(UpdateFolderRequest.class), eq(ownerId)))
+        .willThrow(new AppException(ErrorCode.FOLDER_ACCESS_DENIED));
+
+      mockMvc.perform(patch("/folders/{id}", folderId)
+          .contentType(MediaType.APPLICATION_JSON)
+          .content("{\"name\":\"Tên mới\"}"))
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.success").value(false))
         .andExpect(jsonPath("$.code").value(ErrorCode.FOLDER_ACCESS_DENIED.getCode()));
