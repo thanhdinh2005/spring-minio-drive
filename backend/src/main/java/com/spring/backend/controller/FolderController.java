@@ -5,6 +5,7 @@ import java.util.UUID;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -52,5 +53,14 @@ public class FolderController {
     FolderContentsResponse response = folderService.getContents(
       id, me.getId(), pageNo, pageSize, sortBy, sortDir);
     return ResponseEntity.ok(AppResponse.success(response));
+  }
+
+  @DeleteMapping("/{id}")
+  public ResponseEntity<AppResponse<Void>> deleteHard(
+    @PathVariable UUID id,
+    @AuthenticationPrincipal CustomUserDetails me
+  ) {
+    folderService.deleteHard(id, me.getId());
+    return ResponseEntity.ok(AppResponse.success(null));
   }
 }

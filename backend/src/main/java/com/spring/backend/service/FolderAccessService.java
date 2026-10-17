@@ -22,4 +22,7 @@ public interface FolderAccessService {
 
   // Yêu cầu quyền EDIT, ném FOLDER_ACCESS_DENIED (403) nếu không đủ
   void requireEdit(Folder folder, UUID userId);
+
+  // Yêu cầu quyền OWNER, ném FOLDER_ACCESS_DENIED (403) nếu không phải owner
+  void requireOwner(Folder folder, UUID userId);
 }

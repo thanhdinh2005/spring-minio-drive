@@ -72,6 +72,15 @@ public class FolderAccessServiceImpl implements FolderAccessService {
     }
   }
 
+  @Override
+  public void requireOwner(Folder folder, UUID userId) {
+    // Chỉ OWNER mới được xóa (kể cả khi có quyền EDIT được chia sẻ cũng không được xóa).
+    // Dùng quyền hiệu lực nên owner của folder hoặc của tổ tiên đều được xem là OWNER.
+    if (getEffectivePermission(folder, userId) != PermissionType.OWNER) {
+      throw new AppException(ErrorCode.FOLDER_ACCESS_DENIED);
+    }
+  }
+
   private Folder findParent(Folder folder) {
     String parentFolderId = folder.getParentFolder();
     if (parentFolderId == null) {
