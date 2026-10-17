@@ -3,6 +3,7 @@ package com.spring.backend.common;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.spring.backend.exception.ErrorCode;
 import lombok.Getter;
+import org.springframework.http.HttpStatus;
 
 import java.time.Instant;
 
@@ -36,6 +37,11 @@ public class AppResponse<T> {
 
   public static <T> AppResponse<T> success(T data, String traceId) {
     return new AppResponse<>(true, 200, null, null, traceId, data);
+  }
+
+  // Dùng khi HTTP status khác 200 (vd 201 Created) để body.status khớp với HTTP status
+  public static <T> AppResponse<T> success(T data, HttpStatus status) {
+    return new AppResponse<>(true, status.value(), null, null, null, data);
   }
 
   // ===== Error =====
