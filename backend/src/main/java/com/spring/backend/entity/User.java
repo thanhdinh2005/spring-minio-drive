@@ -4,6 +4,7 @@ import com.spring.backend.entity.enums.Plan;
 import com.spring.backend.entity.enums.Role;
 import com.spring.backend.entity.enums.Status;
 import jakarta.persistence.*;
+import lombok.Builder;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -38,8 +39,10 @@ public class User extends BaseEntity {
   private Plan plan;
 
   @Column(name = "storage_used", nullable = false)
+  @Builder.Default
   private Long storageUsed = 0L;
 
   @Column(name = "storage_limit", nullable = false)
+  @Builder.Default
   private Long storageLimit = 104857600L;
 }

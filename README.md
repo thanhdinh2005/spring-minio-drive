@@ -135,3 +135,44 @@ Nếu bạn không dùng IntelliJ, thực hiện theo các bước sau trên c�
    ```cmd
    java -jar target backend-0.0.1-SNAPSHOT.jar --spring.profiles.active=dev
    ```
+
+---
+
+## 🧪 5. Chạy Integration Test (Folder/Document)
+
+Integration test (`*IntegrationTest`) chạy HTTP end-to-end với JWT thật vào
+**infra local** (Postgres + RustFS do docker compose dựng sẵn).
+
+### Bước 1: Bật infra
+
+```bash
+docker compose up -d postgres rustfs
+```
+
+### Bước 2: Tạo database + bucket cho test (làm tay 1 lần)
+
+```bash
+docker exec postgres psql -U postgres -c "CREATE DATABASE app_test;"
+```
+
+Tạo bucket `it-bucket` trên RustFS console [http://localhost:9001](http://localhost:9001)
+(đăng nhập bằng `RUSTFS_ACCESS_KEY` / `RUSTFS_SECRET_KEY` trong file `.env` ở root).
+
+### Bước 3: Export credentials (PowerShell, giá trị lấy từ file `.env` ở root)
+
+```powershell
+$env:TEST_DB_PASSWORD="<DB_PASSWORD trong .env>"
+$env:TEST_STORAGE_ACCESS_KEY="<RUSTFS_ACCESS_KEY trong .env>"
+$env:TEST_STORAGE_SECRET_KEY="<RUSTFS_SECRET_KEY trong .env>"
+```
+
+### Bước 4: Chạy test
+
+```powershell
+cd backend
+.\mvnw.cmd test -Dtest='*IntegrationTest'
+```
+
+> Lưu ý: `BackendApplicationTests` (Testcontainers) cần Docker API qua TCP/npipe
+> tương thích với docker-java; trên Docker Desktop quá mới có thể fail sẵn,
+> không liên quan tới các test trên.

@@ -5,17 +5,17 @@ import com.spring.backend.security.CustomUserDetails;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
-import io.jsonwebtoken.security.Keys;
 import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
+import javax.crypto.SecretKey;
 import java.nio.charset.StandardCharsets;
-import java.security.Key;
 import java.util.Date;
 import java.util.UUID;
+
+import io.jsonwebtoken.security.Keys;
 
 @Component
 @Slf4j
@@ -41,11 +41,11 @@ public class JwtService {
     Date expiration = new Date(now.getTime() + jwtExpiration);
 
     return Jwts.builder()
-      .setSubject(user.getEmail())
+      .subject(user.getEmail())
       .claim("userId", user.getId().toString())
-      .setIssuedAt(now)
-      .setExpiration(expiration)
-      .signWith(getSigningKey(), SignatureAlgorithm.HS256)
+      .issuedAt(now)
+      .expiration(expiration)
+      .signWith(getSigningKey())
       .compact();
   }
 
@@ -88,14 +88,14 @@ public class JwtService {
   }
 
   private Claims extractAllClaims(String token) {
-    return Jwts.parserBuilder()
-      .setSigningKey(getSigningKey())
+    return Jwts.parser()
+      .verifyWith(getSigningKey())
       .build()
-      .parseClaimsJws(token)
-      .getBody();
+      .parseSignedClaims(token)
+      .getPayload();
   }
 
-  private Key getSigningKey() {
+  private SecretKey getSigningKey() {
     return Keys.hmacShaKeyFor(
       secretKey.getBytes(StandardCharsets.UTF_8)
     );
