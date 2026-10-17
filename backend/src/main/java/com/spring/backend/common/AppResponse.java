@@ -36,6 +36,10 @@ public class AppResponse<T> {
     return new AppResponse<>(true, 200, null, null, null, data);
   }
 
+  public static <T> AppResponse<T> created(T data) {
+    return new AppResponse<>(true, 201, null, null, null, data);
+  }
+
   public static <T> AppResponse<T> success(T data, String traceId) {
     return new AppResponse<>(true, 200, null, null, traceId, data);
   }
