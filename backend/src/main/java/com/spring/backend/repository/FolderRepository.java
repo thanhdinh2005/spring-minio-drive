@@ -19,6 +19,9 @@ public interface FolderRepository extends JpaRepository<Folder, UUID> {
   // Lấy các folder con trực tiếp của một folder, có phân trang
   Page<Folder> findByParentFolder(String parentFolder, Pageable pageable);
 
+  // Đếm số folder con trực tiếp của một folder
+  long countByParentFolder(String parentFolder);
+
   // Lấy các folder gốc (parent_folder = null) của một user
   List<Folder> findByOwner_IdAndParentFolderIsNull(UUID ownerId);
 }

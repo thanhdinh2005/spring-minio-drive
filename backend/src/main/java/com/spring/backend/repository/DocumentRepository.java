@@ -18,4 +18,7 @@ public interface DocumentRepository extends JpaRepository<Document, UUID> {
 
   // Lấy các document trực tiếp bên trong một folder, có phân trang
   Page<Document> findByFolder_Id(UUID folderId, Pageable pageable);
+
+  // Đếm số document trực tiếp bên trong một folder
+  long countByFolder_Id(UUID folderId);
 }

@@ -4,14 +4,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.spring.backend.common.PageResponse;
 import com.spring.backend.common.utils.StorageNameUtils;
 import com.spring.backend.dto.folder.CreateFolderRequest;
 import com.spring.backend.dto.folder.DocumentSummaryResponse;
@@ -93,24 +90,59 @@ public class FolderServiceImpl implements FolderService {
     Folder folder = folderAccessService.requireFolder(folderId);
     folderAccessService.requireView(folder, userId);
 
-    Pageable pageable = buildPageable(pageNo, pageSize, sortBy, sortDir);
+    String parentFolderId = folder.getId().toString();
+    long folderTotal = folderRepository.countByParentFolder(parentFolderId);
+    long documentTotal = documentRepository.countByFolder_Id(folder.getId());
+    long total = folderTotal + documentTotal;
 
-    // 2. Lấy folder con + document con trực tiếp (phân trang chung một bộ tham số)
-    Page<Folder> subFolders = folderRepository.findByParentFolder(folder.getId().toString(), pageable);
-    Page<Document> documents = documentRepository.findByFolder_Id(folder.getId(), pageable);
+    int size = Math.max(pageSize, 1);
+    int page = Math.max(pageNo, 0);
+    long start = (long) page * size;
+    long end = Math.min(start + size, total);
+
+    Sort sort = buildSort(sortBy, sortDir);
+
+    // 2. Dãy gộp = [tất cả folder con] rồi [tất cả document con].
+    //    Cắt đúng cửa sổ [start, end) của trang hiện tại: phần giao với folder lấy trước,
+    //    phần còn lại lấy từ document -> folder luôn được ưu tiên hiển thị trước.
+    List<Folder> subFolders = List.of();
+    if (start < folderTotal) {
+      int folderLimit = (int) (Math.min(end, folderTotal) - start);
+      if (folderLimit > 0) {
+        subFolders = folderRepository
+          .findByParentFolder(parentFolderId, new OffsetPageRequest(start, folderLimit, sort))
+          .getContent();
+      }
+    }
+
+    List<Document> documents = List.of();
+    long documentStart = Math.max(start, folderTotal);
+    if (end > documentStart) {
+      int documentLimit = (int) (end - documentStart);
+      documents = documentRepository
+        .findByFolder_Id(folder.getId(),
+          new OffsetPageRequest(documentStart - folderTotal, documentLimit, sort))
+        .getContent();
+    }
+
+    int totalPages = (int) Math.ceil((double) total / size);
 
     return FolderContentsResponse.builder()
       .folder(toFolderSummary(folder))
-      .subFolders(PageResponse.from(subFolders.map(this::toFolderSummary)))
-      .documents(PageResponse.from(documents.map(this::toDocumentSummary)))
+      .subFolders(subFolders.stream().map(this::toFolderSummary).toList())
+      .documents(documents.stream().map(this::toDocumentSummary).toList())
+      .pageNo(page)
+      .pageSize(size)
+      .totalElements(total)
+      .totalPages(totalPages)
+      .last(end >= total)
       .build();
   }
 
-  private Pageable buildPageable(int pageNo, int pageSize, String sortBy, String sortDir) {
-    Sort sort = sortDir.equalsIgnoreCase(Sort.Direction.DESC.name())
+  private Sort buildSort(String sortBy, String sortDir) {
+    return sortDir.equalsIgnoreCase(Sort.Direction.DESC.name())
       ? Sort.by(sortBy).descending()
       : Sort.by(sortBy).ascending();
-    return PageRequest.of(pageNo, pageSize, sort);
   }
 
   /**
@@ -151,5 +183,57 @@ public class FolderServiceImpl implements FolderService {
       .size(document.getSize())
       .mimeType(document.getMimeType())
       .build();
+  }
+
+  /**
+   * Pageable hỗ trợ offset tuỳ ý (PageRequest chỉ hỗ trợ offset = page * size),
+   * cần cho việc phân trang trên dãy gộp folder + document.
+   */
+  private record OffsetPageRequest(long offset, int limit, Sort sort) implements Pageable {
+
+    @Override
+    public int getPageNumber() {
+      return (int) (offset / Math.max(limit, 1));
+    }
+
+    @Override
+    public int getPageSize() {
+      return limit;
+    }
+
+    @Override
+    public long getOffset() {
+      return offset;
+    }
+
+    @Override
+    public Sort getSort() {
+      return sort;
+    }
+
+    @Override
+    public Pageable next() {
+      return new OffsetPageRequest(offset + limit, limit, sort);
+    }
+
+    @Override
+    public Pageable previousOrFirst() {
+      return hasPrevious() ? new OffsetPageRequest(offset - limit, limit, sort) : first();
+    }
+
+    @Override
+    public Pageable first() {
+      return new OffsetPageRequest(0, limit, sort);
+    }
+
+    @Override
+    public Pageable withPage(int pageNumber) {
+      return new OffsetPageRequest((long) pageNumber * limit, limit, sort);
+    }
+
+    @Override
+    public boolean hasPrevious() {
+      return offset > 0;
+    }
   }
 }
