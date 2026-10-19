@@ -1,6 +1,10 @@
 package com.spring.backend.service.impl;
 
 import com.spring.backend.dto.auth.UpgradeResponse;
+import com.spring.backend.common.PageResponse;
+import com.spring.backend.dto.auth.AdminUserResponse;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import com.spring.backend.dto.auth.UserResponse;
 import com.spring.backend.dto.user.StorageUsageResponse;
 import com.spring.backend.entity.User;
@@ -68,4 +72,20 @@ public class UserServiceImpl implements UserService {
       .storageLimit(user.getStorageLimit())
       .build();
   }
+
+  @Override
+  public PageResponse<AdminUserResponse> getAllUsers(Pageable pageable) {
+    Page<AdminUserResponse> page = userRepository.findAll(pageable)
+      .map(user -> AdminUserResponse.builder()
+        .id(user.getId())
+        .email(user.getEmail())
+        .displayName(user.getDisplayName())
+        .status(user.getStatus())
+        .plan(user.getPlan())
+        .createdAt(user.getCreatedAt())
+        .build());
+
+    return PageResponse.from(page);
+  }
+
 }
