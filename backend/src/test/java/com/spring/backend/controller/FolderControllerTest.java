@@ -21,7 +21,10 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import com.spring.backend.dto.folder.CreateFolderRequest;
+import com.spring.backend.dto.folder.DocumentSummaryResponse;
+import com.spring.backend.dto.folder.FolderContentsResponse;
 import com.spring.backend.dto.folder.FolderResponse;
+import com.spring.backend.dto.folder.FolderSummaryResponse;
 import com.spring.backend.entity.User;
 import com.spring.backend.entity.enums.Plan;
 import com.spring.backend.entity.enums.Role;
@@ -37,12 +40,13 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Test luồng API cho POST /folders.
+ * Test luồng API cho FolderController.
  * Chỉ test tầng API (controller + validation + exception handler), service được mock
  * nên không cần DB, không cần Docker/Testcontainers.
  */
@@ -192,6 +196,107 @@ class FolderControllerTest {
         .andExpect(status().isBadRequest())
         .andExpect(jsonPath("$.success").value(false))
         .andExpect(jsonPath("$.code").value(ErrorCode.INVALID_FOLDER_NAME.getCode()));
+    }
+  }
+
+  @Nested
+  @DisplayName("GET /folders/{id}/contents")
+  class GetContentsTests {
+
+    @Test
+    @DisplayName("lấy nội dung folder thành công → 200 với folder, subFolders, documents và metadata chung")
+    void shouldReturn200_whenGetContents() throws Exception {
+      UUID folderId = UUID.randomUUID();
+      UUID subId = UUID.randomUUID();
+      UUID docId = UUID.randomUUID();
+
+      FolderContentsResponse response = FolderContentsResponse.builder()
+        .folder(FolderSummaryResponse.builder().id(folderId).name("Docs").build())
+        .subFolders(List.of(FolderSummaryResponse.builder().id(subId).name("Sub").build()))
+        .documents(List.of(DocumentSummaryResponse.builder()
+          .id(docId).name("a.pdf").size(204800L).mimeType("application/pdf").build()))
+        .pageNo(1)
+        .pageSize(10)
+        .totalElements(35)
+        .totalPages(4)
+        .last(false)
+        .build();
+
+      given(folderService.getContents(folderId, ownerId, 1, 10, "updatedAt", "desc"))
+        .willReturn(response);
+
+      mockMvc.perform(get("/folders/{id}/contents", folderId).param("pageNo", "1"))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.success").value(true))
+        .andExpect(jsonPath("$.data.folder.id").value(folderId.toString()))
+        .andExpect(jsonPath("$.data.folder.name").value("Docs"))
+        .andExpect(jsonPath("$.data.subFolders[0].id").value(subId.toString()))
+        .andExpect(jsonPath("$.data.subFolders[0].name").value("Sub"))
+        .andExpect(jsonPath("$.data.documents[0].name").value("a.pdf"))
+        .andExpect(jsonPath("$.data.documents[0].size").value(204800))
+        .andExpect(jsonPath("$.data.documents[0].mimeType").value("application/pdf"))
+        .andExpect(jsonPath("$.data.pageNo").value(1))
+        .andExpect(jsonPath("$.data.pageSize").value(10))
+        .andExpect(jsonPath("$.data.totalElements").value(35))
+        .andExpect(jsonPath("$.data.totalPages").value(4))
+        .andExpect(jsonPath("$.data.last").value(false));
+
+      verify(folderService).getContents(folderId, ownerId, 1, 10, "updatedAt", "desc");
+    }
+
+    @Test
+    @DisplayName("không truyền tham số → dùng mặc định pageNo=0, pageSize=10")
+    void shouldUseDefaultParams() throws Exception {
+      UUID folderId = UUID.randomUUID();
+      FolderContentsResponse response = FolderContentsResponse.builder()
+        .folder(FolderSummaryResponse.builder().id(folderId).name("Docs").build())
+        .subFolders(List.of())
+        .documents(List.of())
+        .pageNo(0)
+        .pageSize(10)
+        .totalElements(0)
+        .totalPages(0)
+        .last(true)
+        .build();
+
+      given(folderService.getContents(folderId, ownerId, 0, 10, "updatedAt", "desc"))
+        .willReturn(response);
+
+      mockMvc.perform(get("/folders/{id}/contents", folderId))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.data.subFolders").isArray())
+        .andExpect(jsonPath("$.data.documents").isArray())
+        .andExpect(jsonPath("$.data.pageNo").value(0))
+        .andExpect(jsonPath("$.data.pageSize").value(10))
+        .andExpect(jsonPath("$.data.last").value(true));
+
+      verify(folderService).getContents(folderId, ownerId, 0, 10, "updatedAt", "desc");
+    }
+
+    @Test
+    @DisplayName("folder không tồn tại → 404 FOLDER_NOT_FOUND")
+    void shouldReturn404_whenFolderNotFound() throws Exception {
+      UUID folderId = UUID.randomUUID();
+      given(folderService.getContents(folderId, ownerId, 0, 10, "updatedAt", "desc"))
+        .willThrow(new AppException(ErrorCode.FOLDER_NOT_FOUND));
+
+      mockMvc.perform(get("/folders/{id}/contents", folderId))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.success").value(false))
+        .andExpect(jsonPath("$.code").value(ErrorCode.FOLDER_NOT_FOUND.getCode()));
+    }
+
+    @Test
+    @DisplayName("không có quyền VIEW → 403 FOLDER_ACCESS_DENIED")
+    void shouldReturn403_whenNoViewPermission() throws Exception {
+      UUID folderId = UUID.randomUUID();
+      given(folderService.getContents(folderId, ownerId, 0, 10, "updatedAt", "desc"))
+        .willThrow(new AppException(ErrorCode.FOLDER_ACCESS_DENIED));
+
+      mockMvc.perform(get("/folders/{id}/contents", folderId))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.success").value(false))
+        .andExpect(jsonPath("$.code").value(ErrorCode.FOLDER_ACCESS_DENIED.getCode()));
     }
   }
 }
