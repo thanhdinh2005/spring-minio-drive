@@ -1,5 +1,6 @@
 package com.spring.backend.service.impl;
 
+import com.spring.backend.dto.auth.UpgradeResponse;
 import com.spring.backend.dto.auth.UserResponse;
 import com.spring.backend.dto.user.StorageUsageResponse;
 import com.spring.backend.entity.User;
@@ -129,4 +130,26 @@ class UserServiceImplTest {
       assertThat(response.getEmail()).isEqualTo("user@example.com");
     }
   }
+
+  @Nested
+  @DisplayName("upgradeToPremium")
+  class UpgradeToPremiumTests {
+
+    @Test
+    @DisplayName("Nâng cấp thành công lên PREMIUM với storageLimit 1073741824")
+    void upgradeToPremium_Success() {
+      given(userRepository.findById(userId)).willReturn(Optional.of(mockUser));
+
+      UpgradeResponse response = userService.upgradeToPremium(userId);
+
+      assertThat(response).isNotNull();
+      assertThat(response.getPlan()).isEqualTo(Plan.PREMIUM);
+      assertThat(response.getStorageLimit()).isEqualTo(1073741824L);
+      assertThat(mockUser.getPlan()).isEqualTo(Plan.PREMIUM);
+      assertThat(mockUser.getStorageLimit()).isEqualTo(1073741824L);
+
+      verify(userRepository).save(mockUser);
+    }
+  }
+
 }
