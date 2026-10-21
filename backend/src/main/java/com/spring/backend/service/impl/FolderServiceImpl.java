@@ -139,6 +139,30 @@ public class FolderServiceImpl implements FolderService {
       .build();
   }
 
+  @Override
+  @Transactional
+  public void deleteHard(UUID folderId, UUID userId) {
+    // 1. Lấy folder (404) + chỉ OWNER mới được xóa (403; quyền EDIT được chia sẻ không cho xóa)
+    Folder folder = folderAccessService.requireFolder(folderId);
+    folderAccessService.requireOwner(folder, userId);
+
+    // 2. Xóa cứng đệ quy toàn bộ subFolder + document con trong cùng 1 transaction
+    deleteRecursively(folder);
+    log.debug("Hard-deleted folder {} (owner={}) with all descendants", folderId, userId);
+  }
+
+  /**
+   * Xóa cứng folder theo chiều sâu: xử lý các folder con trước, sau đó xóa
+   * toàn bộ document trực tiếp bên trong và cuối cùng là chính folder.
+   */
+  private void deleteRecursively(Folder folder) {
+    for (Folder child : folderRepository.findByParentFolder(folder.getId().toString())) {
+      deleteRecursively(child);
+    }
+    documentRepository.deleteAll(documentRepository.findByFolder_Id(folder.getId()));
+    folderRepository.delete(folder);
+  }
+
   private Sort buildSort(String sortBy, String sortDir) {
     return sortDir.equalsIgnoreCase(Sort.Direction.DESC.name())
       ? Sort.by(sortBy).descending()

@@ -38,8 +38,10 @@ import com.spring.backend.service.FolderService;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -294,6 +296,50 @@ class FolderControllerTest {
         .willThrow(new AppException(ErrorCode.FOLDER_ACCESS_DENIED));
 
       mockMvc.perform(get("/folders/{id}/contents", folderId))
+        .andExpect(status().isForbidden())
+        .andExpect(jsonPath("$.success").value(false))
+        .andExpect(jsonPath("$.code").value(ErrorCode.FOLDER_ACCESS_DENIED.getCode()));
+    }
+  }
+
+  @Nested
+  @DisplayName("DELETE /folders/{id}")
+  class DeleteTests {
+
+    @Test
+    @DisplayName("xóa folder thành công → 200, data null")
+    void shouldReturn200_whenDeleteSucceeds() throws Exception {
+      UUID folderId = UUID.randomUUID();
+
+      mockMvc.perform(delete("/folders/{id}", folderId))
+        .andExpect(status().isOk())
+        .andExpect(jsonPath("$.success").value(true))
+        .andExpect(jsonPath("$.data").doesNotExist());
+
+      verify(folderService).deleteHard(folderId, ownerId);
+    }
+
+    @Test
+    @DisplayName("folder không tồn tại → 404 FOLDER_NOT_FOUND")
+    void shouldReturn404_whenFolderNotFound() throws Exception {
+      UUID folderId = UUID.randomUUID();
+      willThrow(new AppException(ErrorCode.FOLDER_NOT_FOUND))
+        .given(folderService).deleteHard(folderId, ownerId);
+
+      mockMvc.perform(delete("/folders/{id}", folderId))
+        .andExpect(status().isNotFound())
+        .andExpect(jsonPath("$.success").value(false))
+        .andExpect(jsonPath("$.code").value(ErrorCode.FOLDER_NOT_FOUND.getCode()));
+    }
+
+    @Test
+    @DisplayName("không phải owner → 403 FOLDER_ACCESS_DENIED")
+    void shouldReturn403_whenNotOwner() throws Exception {
+      UUID folderId = UUID.randomUUID();
+      willThrow(new AppException(ErrorCode.FOLDER_ACCESS_DENIED))
+        .given(folderService).deleteHard(folderId, ownerId);
+
+      mockMvc.perform(delete("/folders/{id}", folderId))
         .andExpect(status().isForbidden())
         .andExpect(jsonPath("$.success").value(false))
         .andExpect(jsonPath("$.code").value(ErrorCode.FOLDER_ACCESS_DENIED.getCode()));

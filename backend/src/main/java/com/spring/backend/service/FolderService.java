@@ -18,4 +18,7 @@ public interface FolderService {
     String sortBy,
     String sortDir
   );
+
+  // Xóa cứng folder kèm toàn bộ subFolder + document con (transaction)
+  void deleteHard(UUID folderId, UUID userId);
 }

@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.util.List;
 import java.util.UUID;
 
 @Repository
@@ -18,6 +19,9 @@ public interface DocumentRepository extends JpaRepository<Document, UUID> {
 
   // Lấy các document trực tiếp bên trong một folder, có phân trang
   Page<Document> findByFolder_Id(UUID folderId, Pageable pageable);
+
+  // Lấy toàn bộ document trực tiếp bên trong một folder (dùng khi xóa cascade)
+  List<Document> findByFolder_Id(UUID folderId);
 
   // Đếm số document trực tiếp bên trong một folder
   long countByFolder_Id(UUID folderId);
