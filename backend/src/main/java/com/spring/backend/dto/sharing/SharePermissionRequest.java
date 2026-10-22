@@ -1,11 +1,12 @@
 package com.spring.backend.dto.sharing;
 
-import com.spring.backend.entity.Permission;
+import java.util.UUID;
+
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.spring.backend.entity.enums.PermissionType;
 
 import jakarta.validation.constraints.AssertTrue;
 import jakarta.validation.constraints.NotNull;
-import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
@@ -13,17 +14,18 @@ import lombok.Setter;
 @Getter
 @Setter
 @NoArgsConstructor
-@AllArgsConstructor
 public class SharePermissionRequest {
 
-    @NotNull(message = "Permission cannot be null")
-    private PermissionType permission;
+    private UUID sharedWithUserId;
 
-    @AssertTrue(message = "Quyen chia se chi duoc la VIEW hoac EDIT")
-    public boolean isValidPermissionAllowed(){
-        return permission == null
-                || permission == PermissionType.VIEW
-                || permission == PermissionType.EDIT;
+    @NotNull(message = "Permission type is required")
+    private PermissionType permissionType;
+
+    @JsonIgnore
+    @AssertTrue(message = "Permission must be VIEW or EDIT")
+    public boolean isPermissionAllowed() {
+        return permissionType == null
+                || permissionType == PermissionType.VIEW
+                || permissionType == PermissionType.EDIT;
     }
-
 }
