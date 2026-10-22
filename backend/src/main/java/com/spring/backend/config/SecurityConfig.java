@@ -1,6 +1,8 @@
 package com.spring.backend.config;
 
 import com.spring.backend.security.JwtAuthenticationFilter;
+
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -49,6 +51,29 @@ public class SecurityConfig {
         ).permitAll()
         .anyRequest().authenticated()
       )
+      // Xử lý lỗi xác thực và phân quyền
+              .exceptionHandling(exception -> exception
+
+                  // Chưa đăng nhập hoặc chưa có JWT
+                  .authenticationEntryPoint(
+                      (request, response, authException) -> {
+                          response.sendError(
+                              HttpServletResponse.SC_UNAUTHORIZED,
+                              "Unauthorized"
+                          );
+                      }
+                  )
+
+                  // Đã đăng nhập nhưng không đủ quyền
+                  .accessDeniedHandler(
+                      (request, response, accessDeniedException) -> {
+                          response.sendError(
+                              HttpServletResponse.SC_FORBIDDEN,
+                              "Forbidden"
+                          );
+                      }
+                  )
+              )
       .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
     return http.build();
