@@ -38,6 +38,16 @@ public class AppResponse<T> {
   public static <T> AppResponse<T> success(T data, String traceId) {
     return new AppResponse<>(true, 200, null, null, traceId, data);
   }
+  public static <T> AppResponse<T> created(T data) {
+    return new AppResponse<>(
+            true,
+            201,
+            null,
+            null,
+            null,
+            data
+    );
+}
 
   // Dùng khi HTTP status khác 200 (vd 201 Created) để body.status khớp với HTTP status
   public static <T> AppResponse<T> success(T data, HttpStatus status) {

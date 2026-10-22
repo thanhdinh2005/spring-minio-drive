@@ -1,5 +1,6 @@
 package com.spring.backend.service.impl;
 
+import com.spring.backend.dto.admin.UpdateUserStatusResponse;
 import com.spring.backend.dto.auth.UpgradeResponse;
 import com.spring.backend.common.PageResponse;
 import com.spring.backend.dto.auth.AdminUserResponse;
@@ -9,6 +10,7 @@ import com.spring.backend.dto.auth.UserResponse;
 import com.spring.backend.dto.user.StorageUsageResponse;
 import com.spring.backend.entity.User;
 import com.spring.backend.entity.enums.Plan;
+import com.spring.backend.entity.enums.Status;
 import com.spring.backend.exception.AppException;
 import com.spring.backend.exception.ErrorCode;
 import com.spring.backend.repository.DocumentRepository;
@@ -88,4 +90,19 @@ public class UserServiceImpl implements UserService {
     return PageResponse.from(page);
   }
 
+
+  @Override
+  @Transactional
+  public UpdateUserStatusResponse updateUserStatus(UUID id, Status status) {
+    User user = userRepository.findById(id)
+      .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+    user.setStatus(status);
+    userRepository.save(user);
+
+    return UpdateUserStatusResponse.builder()
+      .id(user.getId())
+      .status(user.getStatus())
+      .build();
+  }
 }
