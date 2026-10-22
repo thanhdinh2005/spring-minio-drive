@@ -1,11 +1,14 @@
 package com.spring.backend.controller;
 
 import com.spring.backend.common.PageResponse;
+import com.spring.backend.dto.admin.UpdateUserStatusResponse;
 import com.spring.backend.dto.auth.AdminUserResponse;
 import com.spring.backend.entity.User;
 import com.spring.backend.entity.enums.Plan;
 import com.spring.backend.entity.enums.Role;
 import com.spring.backend.entity.enums.Status;
+import com.spring.backend.exception.AppException;
+import com.spring.backend.exception.ErrorCode;
 import com.spring.backend.exception.GlobalExceptionHandler;
 import com.spring.backend.security.CustomUserDetails;
 import com.spring.backend.service.UserService;
@@ -31,8 +34,10 @@ import java.util.List;
 import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -106,5 +111,41 @@ class AdminUserControllerTest {
       .andExpect(jsonPath("$.data.content[0].email").value("user@gmail.com"))
       .andExpect(jsonPath("$.data.totalElements").value(1))
       .andExpect(jsonPath("$.data.totalPages").value(1));
+  }
+
+  @Test
+  @DisplayName("PATCH /admin/users/{id}/status thành công -> 200 OK")
+  void updateUserStatus_Success() throws Exception {
+    UUID targetUserId = UUID.randomUUID();
+    UpdateUserStatusResponse response = UpdateUserStatusResponse.builder()
+      .id(targetUserId)
+      .status(Status.LOCKED)
+      .build();
+
+    given(userService.updateUserStatus(eq(targetUserId), eq(Status.LOCKED)))
+      .willReturn(response);
+
+    mockMvc.perform(patch("/admin/users/{id}/status", targetUserId)
+        .contentType(MediaType.APPLICATION_JSON)
+        .content("{\"status\":\"LOCKED\"}"))
+      .andExpect(status().isOk())
+      .andExpect(jsonPath("$.success").value(true))
+      .andExpect(jsonPath("$.data.id").value(targetUserId.toString()))
+      .andExpect(jsonPath("$.data.status").value("LOCKED"));
+  }
+
+  @Test
+  @DisplayName("User không tồn tại -> 404 USER_NOT_FOUND")
+  void updateUserStatus_NotFound() throws Exception {
+    UUID targetUserId = UUID.randomUUID();
+
+    given(userService.updateUserStatus(eq(targetUserId), eq(Status.LOCKED)))
+      .willThrow(new AppException(ErrorCode.USER_NOT_FOUND));
+    mockMvc.perform(patch("/admin/users/{id}/status", targetUserId)
+        .contentType(MediaType.APPLICATION_JSON)
+        .content("{\"status\":\"LOCKED\"}"))
+      .andExpect(status().isNotFound())
+      .andExpect(jsonPath("$.success").value(false))
+      .andExpect(jsonPath("$.code").value("ERR_USER_001"));
   }
 }

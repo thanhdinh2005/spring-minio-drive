@@ -69,6 +69,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter{
 
     User user = userOpt.get();
     Set<GrantedAuthority> authority = Set.of(
+      new SimpleGrantedAuthority("ROLE_" + user.getRole().name()),
       new SimpleGrantedAuthority(user.getRole().name())
     );
     CustomUserDetails userDetails = new CustomUserDetails(user, authority);
