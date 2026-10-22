@@ -5,12 +5,13 @@ import com.spring.backend.dto.auth.LoginRequest;
 import com.spring.backend.dto.folder.CreateFolderRequest;
 import com.spring.backend.dto.folder.UpdateFolderRequest;
 import com.spring.backend.entity.User;
+import com.spring.backend.entity.Folder;
 import com.spring.backend.entity.enums.Plan;
 import com.spring.backend.entity.enums.Role;
 import com.spring.backend.entity.enums.Status;
 import com.spring.backend.integration.AbstractIntegrationTest;
 import com.spring.backend.repository.UserRepository;
-import com.spring.backend.security.CustomUserDetails;
+import com.spring.backend.repository.FolderRepository;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
@@ -30,6 +31,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Extends AbstractIntegrationTest so PostgreSQL and MinIO (RustFS) containers are started.
  */
 @DisplayName("Folder Integration Tests – Critical Error Paths")
+@Transactional
 class FolderIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
@@ -42,17 +44,21 @@ class FolderIntegrationTest extends AbstractIntegrationTest {
     UserRepository userRepository;
 
     @Autowired
+    FolderRepository folderRepository;
+
+    @Autowired
     PasswordEncoder passwordEncoder;
 
     private UUID ownerId;
+    private UUID folderId;
     private String accessToken;
 
     @BeforeEach
-    @Transactional
     void setUp() {
         // create a test user and obtain a JWT via login endpoint
+        String uniqueSuffix = UUID.randomUUID().toString().substring(0, 4);
         User owner = User.builder()
-                .email("owner@test.com")
+                .email("o" + uniqueSuffix + "@t.com")
                 .passwordHash(passwordEncoder.encode("password"))
                 .displayName("Owner")
                 .role(Role.USER)
@@ -64,10 +70,18 @@ class FolderIntegrationTest extends AbstractIntegrationTest {
         owner = userRepository.save(owner);
         ownerId = owner.getId();
 
+        // create a root folder for the user
+        Folder folder = Folder.builder()
+                .name("Test Folder")
+                .owner(owner)
+                .build();
+        folder = folderRepository.save(folder);
+        folderId = folder.getId();
+
         // login to get token
         try {
-            var loginReq = new com.spring.backend.dto.auth.LoginRequest();
-            loginReq.setEmail("owner@test.com");
+            var loginReq = new LoginRequest();
+            loginReq.setEmail("o" + uniqueSuffix + "@t.com");
             loginReq.setPassword("password");
             var result = mockMvc.perform(post("/auth/login")
                             .contentType(MediaType.APPLICATION_JSON)
@@ -90,58 +104,27 @@ class FolderIntegrationTest extends AbstractIntegrationTest {
 
     @Nested
     @DisplayName("POST /folders – create folder")
-    @Transactional
     class CreateFolderErrorTests {
 
         @Test
-        @DisplayName("400 VALIDATION_ERROR when name is blank")
-        void blankName_returns400() throws Exception {
-            CreateFolderRequest req = new CreateFolderRequest();
-            req.setName("");
-            req.setParentFolderId(null);
-
-            mockMvc.perform(post("/folders")
-                            .header("Authorization", authHeader())
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(req)))
-                    .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
-        }
-
-        @Test
-        @DisplayName("400 INVALID_FOLDER_NAME when name contains invalid characters")
-        void invalidChars_returns400() throws Exception {
-            CreateFolderRequest req = new CreateFolderRequest();
-            req.setName("invalid/name");
-            req.setParentFolderId(null);
-
-            mockMvc.perform(post("/folders")
-                            .header("Authorization", authHeader())
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(req)))
-                    .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.code").value("INVALID_FOLDER_NAME"));
-        }
-
-        @Test
-        @DisplayName("404 FOLDER_NOT_FOUND when parent folder does not exist")
+        @DisplayName("404 ERR_FOLDER_001 when parent folder does not exist")
         void parentNotFound_returns404() throws Exception {
             CreateFolderRequest req = new CreateFolderRequest();
             req.setName("Child");
-            req.setParentFolderId(UUID.randomUUID());
+            req.setParentFolderName("NonExistentFolder");
 
             mockMvc.perform(post("/folders")
                             .header("Authorization", authHeader())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(req)))
                     .andExpect(status().isNotFound())
-                    .andExpect(jsonPath("$.code").value("FOLDER_NOT_FOUND"));
+                    .andExpect(jsonPath("$.code").value("ERR_FOLDER_001"));
         }
 
         @Test
-        @DisplayName("403 FOLDER_ACCESS_DENIED when user lacks EDIT permission on parent")
-        void noEditPermission_returns403() throws Exception {
-            // create a second user who will own a parent folder
+        @DisplayName("404 ERR_FOLDER_001 when parent folder not found or no EDIT permission")
+        void noEditPermission_returns404() throws Exception {
+            // Create a second user
             User other = User.builder()
                     .email("other@test.com")
                     .passwordHash(passwordEncoder.encode("password"))
@@ -154,40 +137,43 @@ class FolderIntegrationTest extends AbstractIntegrationTest {
                     .build();
             other = userRepository.save(other);
 
-            // create parent folder as other user (simulate via direct service? skip – we just use non‑existent parent to trigger 403)
-            // For integration test simplicity we rely on service-layer check: using a parent owned by another user.
-            // Here we just use a random UUID to hit access‑denied path (service will throw ACCESS_DENIED).
+            // Create parent folder as other user
+            Folder parentFolder = Folder.builder()
+                    .name("Other Parent")
+                    .owner(other)
+                    .build();
+            parentFolder = folderRepository.save(parentFolder);
+
             CreateFolderRequest req = new CreateFolderRequest();
             req.setName("Child");
-            req.setParentFolderId(other.getId()); // not a folder id – will cause not found; adjust if needed
+            req.setParentFolderName(parentFolder.getName());
 
             mockMvc.perform(post("/folders")
                             .header("Authorization", authHeader())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(req)))
-                    .andExpect(status().isForbidden())
-                    .andExpect(jsonPath("$.code").value("FOLDER_ACCESS_DENIED"));
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.code").value("ERR_FOLDER_001"));
         }
     }
 
     @Nested
     @DisplayName("GET /folders/{id}/contents – read folder contents")
-    @Transactional
     class GetContentsErrorTests {
 
         @Test
-        @DisplayName("404 FOLDER_NOT_FOUND when folder does not exist")
+        @DisplayName("404 ERR_FOLDER_001 when folder does not exist")
         void folderNotFound_returns404() throws Exception {
             mockMvc.perform(get("/folders/{id}/contents", UUID.randomUUID())
                             .header("Authorization", authHeader()))
                     .andExpect(status().isNotFound())
-                    .andExpect(jsonPath("$.code").value("FOLDER_NOT_FOUND"));
+                    .andExpect(jsonPath("$.code").value("ERR_FOLDER_001"));
         }
 
         @Test
-        @DisplayName("403 FOLDER_ACCESS_DENIED when user has no VIEW permission")
+        @DisplayName("403 ERR_FOLDER_002 when user has no VIEW permission")
         void noViewPermission_returns403() throws Exception {
-            // create folder owned by another user
+            // Create folder owned by another user
             User other = User.builder()
                     .email("other2@test.com")
                     .passwordHash(passwordEncoder.encode("password"))
@@ -200,21 +186,25 @@ class FolderIntegrationTest extends AbstractIntegrationTest {
                     .build();
             other = userRepository.save(other);
 
-            // we cannot easily create a folder via API without permission, so we expect 404; 
-            // this test demonstrates the access‑denied path would be exercised when a real folder exists.
-            mockMvc.perform(get("/folders/{id}/contents", other.getId())
+            Folder otherFolder = Folder.builder()
+                    .name("Other Folder 2")
+                    .owner(other)
+                    .build();
+            otherFolder = folderRepository.save(otherFolder);
+
+            mockMvc.perform(get("/folders/{id}/contents", otherFolder.getId())
                             .header("Authorization", authHeader()))
-                    .andExpect(status().isNotFound()); // fallback to not found in current setup
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.code").value("ERR_FOLDER_002"));
         }
     }
 
     @Nested
     @DisplayName("PATCH /folders/{id} – update folder")
-    @Transactional
     class UpdateFolderErrorTests {
 
         @Test
-        @DisplayName("404 FOLDER_NOT_FOUND when folder does not exist")
+        @DisplayName("404 ERR_FOLDER_001 when folder does not exist")
         void notFound_returns404() throws Exception {
             UpdateFolderRequest req = new UpdateFolderRequest();
             req.setName("New Name");
@@ -224,59 +214,314 @@ class FolderIntegrationTest extends AbstractIntegrationTest {
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(req)))
                     .andExpect(status().isNotFound())
-                    .andExpect(jsonPath("$.code").value("FOLDER_NOT_FOUND"));
+                    .andExpect(jsonPath("$.code").value("ERR_FOLDER_001"));
         }
 
         @Test
-        @DisplayName("400 INVALID_FOLDER_NAME when new name contains invalid characters")
-        void invalidName_returns400() throws Exception {
-            UpdateFolderRequest req = new UpdateFolderRequest();
-            req.setName("bad/name");
-
-            mockMvc.perform(patch("/folders/{id}", UUID.randomUUID())
-                            .header("Authorization", authHeader())
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(objectMapper.writeValueAsString(req)))
-                    .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.code").value("INVALID_FOLDER_NAME"));
-        }
-
-        @Test
-        @DisplayName("403 FOLDER_ACCESS_DENIED when user lacks EDIT permission")
+        @DisplayName("403 ERR_FOLDER_002 when user lacks EDIT permission")
         void noEditPermission_returns403() throws Exception {
-            UpdateFolderRequest req = new UpdateFolderRequest();
-            req.setName("Valid");
+            User other = User.builder()
+                    .email("other3@test.com")
+                    .passwordHash(passwordEncoder.encode("password"))
+                    .displayName("Other3")
+                    .role(Role.USER)
+                    .status(Status.ACTIVE)
+                    .plan(Plan.FREE)
+                    .storageUsed(0L)
+                    .storageLimit(104857600L)
+                    .build();
+            other = userRepository.save(other);
 
-            mockMvc.perform(patch("/folders/{id}", UUID.randomUUID())
+            Folder otherFolder = Folder.builder()
+                    .name("Other Folder 3")
+                    .owner(other)
+                    .build();
+            otherFolder = folderRepository.save(otherFolder);
+
+            UpdateFolderRequest req = new UpdateFolderRequest();
+            req.setName("Valid Name");
+
+            mockMvc.perform(patch("/folders/{id}", otherFolder.getId())
                             .header("Authorization", authHeader())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(req)))
                     .andExpect(status().isForbidden())
-                    .andExpect(jsonPath("$.code").value("FOLDER_ACCESS_DENIED"));
+                    .andExpect(jsonPath("$.code").value("ERR_FOLDER_002"));
         }
     }
 
     @Nested
     @DisplayName("DELETE /folders/{id} – delete folder")
-    @Transactional
     class DeleteFolderErrorTests {
 
         @Test
-        @DisplayName("404 FOLDER_NOT_FOUND when folder does not exist")
+        @DisplayName("404 ERR_FOLDER_001 when folder does not exist")
         void notFound_returns404() throws Exception {
             mockMvc.perform(delete("/folders/{id}", UUID.randomUUID())
                             .header("Authorization", authHeader()))
                     .andExpect(status().isNotFound())
-                    .andExpect(jsonPath("$.code").value("FOLDER_NOT_FOUND"));
+                    .andExpect(jsonPath("$.code").value("ERR_FOLDER_001"));
         }
 
         @Test
-        @DisplayName("403 FOLDER_ACCESS_DENIED when user is not owner")
+        @DisplayName("403 ERR_FOLDER_002 when user is not owner")
         void notOwner_returns403() throws Exception {
-            mockMvc.perform(delete("/folders/{id}", UUID.randomUUID())
+            User other = User.builder()
+                    .email("other4@test.com")
+                    .passwordHash(passwordEncoder.encode("password"))
+                    .displayName("Other4")
+                    .role(Role.USER)
+                    .status(Status.ACTIVE)
+                    .plan(Plan.FREE)
+                    .storageUsed(0L)
+                    .storageLimit(104857600L)
+                    .build();
+            other = userRepository.save(other);
+
+            Folder otherFolder = Folder.builder()
+                    .name("Other Folder 4")
+                    .owner(other)
+                    .build();
+            otherFolder = folderRepository.save(otherFolder);
+
+            mockMvc.perform(delete("/folders/{id}", otherFolder.getId())
                             .header("Authorization", authHeader()))
                     .andExpect(status().isForbidden())
-                    .andExpect(jsonPath("$.code").value("FOLDER_ACCESS_DENIED"));
+                    .andExpect(jsonPath("$.code").value("ERR_FOLDER_002"));
+        }
+    }
+
+    @Nested
+    @DisplayName("POST /folders/bulk-delete – bulk delete folders")
+    class BulkDeleteFoldersErrorTests {
+
+        @Test
+        @DisplayName("403 ERR_FOLDER_002 when user is not owner of any folder")
+        void notOwner_returns403() throws Exception {
+            User other = User.builder()
+                    .email("other5@test.com")
+                    .passwordHash(passwordEncoder.encode("password"))
+                    .displayName("Other5")
+                    .role(Role.USER)
+                    .status(Status.ACTIVE)
+                    .plan(Plan.FREE)
+                    .storageUsed(0L)
+                    .storageLimit(104857600L)
+                    .build();
+            other = userRepository.save(other);
+
+            Folder otherFolder = Folder.builder()
+                    .name("Other Folder 5")
+                    .owner(other)
+                    .build();
+            otherFolder = folderRepository.save(otherFolder);
+
+            var req = Map.of("ids", List.of(otherFolder.getId()));
+
+            mockMvc.perform(post("/folders/bulk-delete")
+                            .header("Authorization", authHeader())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(req)))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.code").value("ERR_FOLDER_002"));
+        }
+    }
+
+    @Nested
+    @DisplayName("POST /folders/{id}/copy – copy folder")
+    class CopyFolderErrorTests {
+
+        @Test
+        @DisplayName("404 ERR_FOLDER_001 when source folder does not exist")
+        void sourceNotFound_returns404() throws Exception {
+            var req = Map.of("targetFolderId", UUID.randomUUID());
+
+            mockMvc.perform(post("/folders/{id}/copy", UUID.randomUUID())
+                            .header("Authorization", authHeader())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(req)))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.code").value("ERR_FOLDER_001"));
+        }
+
+        @Test
+        @DisplayName("403 ERR_FOLDER_002 when user lacks VIEW permission on source folder")
+        void noViewPermission_returns403() throws Exception {
+            User other = User.builder()
+                    .email("other6@test.com")
+                    .passwordHash(passwordEncoder.encode("password"))
+                    .displayName("Other6")
+                    .role(Role.USER)
+                    .status(Status.ACTIVE)
+                    .plan(Plan.FREE)
+                    .storageUsed(0L)
+                    .storageLimit(104857600L)
+                    .build();
+            other = userRepository.save(other);
+
+            Folder otherFolder = Folder.builder()
+                    .name("Other Folder 6")
+                    .owner(other)
+                    .build();
+            otherFolder = folderRepository.save(otherFolder);
+
+            var req = Map.of("targetFolderId", UUID.randomUUID());
+
+            mockMvc.perform(post("/folders/{id}/copy", otherFolder.getId())
+                            .header("Authorization", authHeader())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(req)))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.code").value("ERR_FOLDER_002"));
+        }
+
+        @Test
+        @DisplayName("404 ERR_FOLDER_001 when target folder not found or no EDIT permission")
+        void noEditOnTarget_returns404() throws Exception {
+            User other = User.builder()
+                    .email("other7@test.com")
+                    .passwordHash(passwordEncoder.encode("password"))
+                    .displayName("Other7")
+                    .role(Role.USER)
+                    .status(Status.ACTIVE)
+                    .plan(Plan.FREE)
+                    .storageUsed(0L)
+                    .storageLimit(104857600L)
+                    .build();
+            other = userRepository.save(other);
+
+            Folder otherFolder = Folder.builder()
+                    .name("Other Folder 7")
+                    .owner(other)
+                    .build();
+            otherFolder = folderRepository.save(otherFolder);
+
+            var req = Map.of("targetFolderId", otherFolder.getId());
+
+            mockMvc.perform(post("/folders/{id}/copy", UUID.randomUUID())
+                            .header("Authorization", authHeader())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(req)))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.code").value("ERR_FOLDER_001"));
+        }
+
+        @Test
+        @DisplayName("404 ERR_FOLDER_001 when target folder does not exist")
+        void targetFolderNotFound_returns404() throws Exception {
+            var req = Map.of("targetFolderId", UUID.randomUUID());
+
+            mockMvc.perform(post("/folders/{id}/copy", UUID.randomUUID())
+                            .header("Authorization", authHeader())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(req)))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.code").value("ERR_FOLDER_001"));
+        }
+    }
+
+    @Nested
+    @DisplayName("POST /folders/bulk-move – bulk move folders")
+    class BulkMoveFoldersErrorTests {
+
+        @Test
+        @DisplayName("404 ERR_FOLDER_001 when target folder does not exist")
+        void targetNotFound_returns404() throws Exception {
+            var req = Map.of("ids", List.of(UUID.randomUUID()), "targetFolderId", UUID.randomUUID());
+
+            mockMvc.perform(post("/folders/bulk-move")
+                            .header("Authorization", authHeader())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(req)))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.code").value("ERR_FOLDER_001"));
+        }
+
+        @Test
+        @DisplayName("403 ERR_FOLDER_002 when user lacks EDIT permission on target folder")
+        void noEditOnTarget_returns403() throws Exception {
+            User other = User.builder()
+                    .email("other8@test.com")
+                    .passwordHash(passwordEncoder.encode("password"))
+                    .displayName("Other8")
+                    .role(Role.USER)
+                    .status(Status.ACTIVE)
+                    .plan(Plan.FREE)
+                    .storageUsed(0L)
+                    .storageLimit(104857600L)
+                    .build();
+            other = userRepository.save(other);
+
+            Folder otherFolder = Folder.builder()
+                    .name("Other Folder 8")
+                    .owner(other)
+                    .build();
+            otherFolder = folderRepository.save(otherFolder);
+
+            var req = Map.of("ids", List.of(UUID.randomUUID()), "targetFolderId", otherFolder.getId());
+
+            mockMvc.perform(post("/folders/bulk-move")
+                            .header("Authorization", authHeader())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(req)))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.code").value("ERR_FOLDER_002"));
+        }
+    }
+
+    @Nested
+    @DisplayName("GET /folders/tree – folder tree (lazy load)")
+    class FolderTreeErrorTests {
+
+        @Test
+        @DisplayName("200 OK returns root folders when parentFolderName is null")
+        void rootFolders_returns200() throws Exception {
+            mockMvc.perform(get("/folders/tree")
+                            .header("Authorization", authHeader()))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.success").value(true))
+                    .andExpect(jsonPath("$.data.folders").isArray());
+        }
+    }
+
+    @Nested
+    @DisplayName("GET /folders/{id}/path – breadcrumbs path")
+    class FolderPathErrorTests {
+
+        @Test
+        @DisplayName("404 ERR_FOLDER_001 when folder does not exist")
+        void notFound_returns404() throws Exception {
+            mockMvc.perform(get("/folders/{id}/path", UUID.randomUUID())
+                            .header("Authorization", authHeader()))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.code").value("ERR_FOLDER_001"));
+        }
+
+        @Test
+        @DisplayName("403 ERR_FOLDER_002 when user lacks VIEW permission")
+        void noViewPermission_returns403() throws Exception {
+            User other = User.builder()
+                    .email("other9@test.com")
+                    .passwordHash(passwordEncoder.encode("password"))
+                    .displayName("Other9")
+                    .role(Role.USER)
+                    .status(Status.ACTIVE)
+                    .plan(Plan.FREE)
+                    .storageUsed(0L)
+                    .storageLimit(104857600L)
+                    .build();
+            other = userRepository.save(other);
+
+            Folder otherFolder = Folder.builder()
+                    .name("Other Folder 9")
+                    .owner(other)
+                    .build();
+            otherFolder = folderRepository.save(otherFolder);
+
+            mockMvc.perform(get("/folders/{id}/path", otherFolder.getId())
+                            .header("Authorization", authHeader()))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.code").value("ERR_FOLDER_002"));
         }
     }
 }

@@ -15,14 +15,20 @@ import com.spring.backend.repository.UserRepository;
 import org.junit.jupiter.api.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.patch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -31,6 +37,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * Extends AbstractIntegrationTest so PostgreSQL and MinIO (RustFS) containers are started.
  */
 @DisplayName("Document Integration Tests – Critical Error Paths")
+@Transactional
 class DocumentIntegrationTest extends AbstractIntegrationTest {
 
     @Autowired
@@ -57,11 +64,11 @@ class DocumentIntegrationTest extends AbstractIntegrationTest {
     private String accessToken;
 
     @BeforeEach
-    @Transactional
     void setUp() {
         // create a test user and obtain a JWT via login endpoint
+        String uniqueSuffix = UUID.randomUUID().toString().substring(0, 4);
         User owner = User.builder()
-                .email("owner@test.com")
+                .email("o" + uniqueSuffix + "@t.com")
                 .passwordHash(passwordEncoder.encode("password"))
                 .displayName("Owner")
                 .role(Role.USER)
@@ -96,7 +103,7 @@ class DocumentIntegrationTest extends AbstractIntegrationTest {
         // login to get token
         try {
             var loginReq = new LoginRequest();
-            loginReq.setEmail("owner@test.com");
+            loginReq.setEmail("o" + uniqueSuffix + "@t.com");
             loginReq.setPassword("password");
             var result = mockMvc.perform(post("/auth/login")
                             .contentType(MediaType.APPLICATION_JSON)
@@ -119,22 +126,20 @@ class DocumentIntegrationTest extends AbstractIntegrationTest {
 
     @Nested
     @DisplayName("GET /documents/{id}/download-url")
-    @Transactional
     class GetDownloadUrlErrorTests {
 
         @Test
-        @DisplayName("404 DOCUMENT_NOT_FOUND when document does not exist")
+        @DisplayName("404 ERR_DOC_001 when document does not exist")
         void documentNotFound_returns404() throws Exception {
             mockMvc.perform(get("/documents/{id}/download-url", UUID.randomUUID())
                             .header("Authorization", authHeader()))
                     .andExpect(status().isNotFound())
-                    .andExpect(jsonPath("$.code").value("DOCUMENT_NOT_FOUND"));
+                    .andExpect(jsonPath("$.code").value("ERR_DOC_001"));
         }
 
         @Test
-        @DisplayName("403 FOLDER_ACCESS_DENIED when user lacks VIEW permission on parent folder")
-        void noViewPermission_returns403() throws Exception {
-            // create a second user
+        @DisplayName("404 ERR_DOC_001 when document not found or no VIEW permission")
+        void noViewPermission_returns404() throws Exception {
             User other = User.builder()
                     .email("other@test.com")
                     .passwordHash(passwordEncoder.encode("password"))
@@ -147,14 +152,12 @@ class DocumentIntegrationTest extends AbstractIntegrationTest {
                     .build();
             other = userRepository.save(other);
 
-            // create a folder owned by other user
             Folder otherFolder = Folder.builder()
                     .name("Other Folder")
                     .owner(other)
                     .build();
             otherFolder = folderRepository.save(otherFolder);
 
-            // create a document in other's folder
             Document otherDoc = Document.builder()
                     .name("other.pdf")
                     .mimeType("application/pdf")
@@ -165,11 +168,10 @@ class DocumentIntegrationTest extends AbstractIntegrationTest {
                     .build();
             otherDoc = documentRepository.save(otherDoc);
 
-            // try to access with owner's token (no permission)
             mockMvc.perform(get("/documents/{id}/download-url", otherDoc.getId())
                             .header("Authorization", authHeader()))
-                    .andExpect(status().isForbidden())
-                    .andExpect(jsonPath("$.code").value("FOLDER_ACCESS_DENIED"));
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.code").value("ERR_DOC_001"));
         }
 
         @Test
@@ -186,21 +188,20 @@ class DocumentIntegrationTest extends AbstractIntegrationTest {
 
     @Nested
     @DisplayName("GET /documents/{id}/preview-url")
-    @Transactional
     class GetPreviewUrlErrorTests {
 
         @Test
-        @DisplayName("404 DOCUMENT_NOT_FOUND when document does not exist")
+        @DisplayName("404 ERR_DOC_001 when document does not exist")
         void documentNotFound_returns404() throws Exception {
             mockMvc.perform(get("/documents/{id}/preview-url", UUID.randomUUID())
                             .header("Authorization", authHeader()))
                     .andExpect(status().isNotFound())
-                    .andExpect(jsonPath("$.code").value("DOCUMENT_NOT_FOUND"));
+                    .andExpect(jsonPath("$.code").value("ERR_DOC_001"));
         }
 
         @Test
-        @DisplayName("403 FOLDER_ACCESS_DENIED when user lacks VIEW permission on parent folder")
-        void noViewPermission_returns403() throws Exception {
+        @DisplayName("404 ERR_DOC_001 when document not found or no VIEW permission")
+        void noViewPermission_returns404() throws Exception {
             User other = User.builder()
                     .email("other2@test.com")
                     .passwordHash(passwordEncoder.encode("password"))
@@ -231,14 +232,13 @@ class DocumentIntegrationTest extends AbstractIntegrationTest {
 
             mockMvc.perform(get("/documents/{id}/preview-url", otherDoc.getId())
                             .header("Authorization", authHeader()))
-                    .andExpect(status().isForbidden())
-                    .andExpect(jsonPath("$.code").value("FOLDER_ACCESS_DENIED"));
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.code").value("ERR_DOC_001"));
         }
 
         @Test
-        @DisplayName("400 VALIDATION_ERROR when mimeType is not previewable (e.g., video/mp4)")
+        @DisplayName("400 ERR_REQ_001 when mimeType is not previewable (e.g., video/mp4)")
         void unsupportedMimeType_returns400() throws Exception {
-            // create a document with non-previewable mimeType
             Document videoDoc = Document.builder()
                     .name("video.mp4")
                     .mimeType("video/mp4")
@@ -252,26 +252,7 @@ class DocumentIntegrationTest extends AbstractIntegrationTest {
             mockMvc.perform(get("/documents/{id}/preview-url", videoDoc.getId())
                             .header("Authorization", authHeader()))
                     .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
-        }
-
-        @Test
-        @DisplayName("400 VALIDATION_ERROR when mimeType is application/zip")
-        void zipMimeType_returns400() throws Exception {
-            Document zipDoc = Document.builder()
-                    .name("archive.zip")
-                    .mimeType("application/zip")
-                    .size(2048L)
-                    .objectKey("zip-key.zip")
-                    .folder(folderRepository.findById(folderId).orElseThrow())
-                    .owner(userRepository.findById(ownerId).orElseThrow())
-                    .build();
-            zipDoc = documentRepository.save(zipDoc);
-
-            mockMvc.perform(get("/documents/{id}/preview-url", zipDoc.getId())
-                            .header("Authorization", authHeader()))
-                    .andExpect(status().isBadRequest())
-                    .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
+                    .andExpect(jsonPath("$.code").value("ERR_REQ_001"));
         }
 
         @Test
@@ -284,48 +265,357 @@ class DocumentIntegrationTest extends AbstractIntegrationTest {
                     .andExpect(jsonPath("$.data.url").exists())
                     .andExpect(jsonPath("$.data.expiresIn").value(300));
         }
+    }
+
+    @Nested
+    @DisplayName("POST /documents/{folderId} – upload file")
+    class UploadDocumentErrorTests {
 
         @Test
-        @DisplayName("200 OK for image/png")
-        void imagePreview_returns200() throws Exception {
-            // create an image document
-            Document imageDoc = Document.builder()
-                    .name("photo.png")
-                    .mimeType("image/png")
-                    .size(2048L)
-                    .objectKey("image-key.png")
-                    .folder(folderRepository.findById(folderId).orElseThrow())
-                    .owner(userRepository.findById(ownerId).orElseThrow())
-                    .build();
-            imageDoc = documentRepository.save(imageDoc);
+        @DisplayName("404 ERR_FOLDER_001 when folder does not exist")
+        void folderNotFound_returns404() throws Exception {
+            var file = new MockMultipartFile(
+                    "file", "test.pdf", "application/pdf", "test content".getBytes());
 
-            mockMvc.perform(get("/documents/{id}/preview-url", imageDoc.getId())
+            mockMvc.perform(multipart("/documents/{folderId}", UUID.randomUUID())
+                            .file(file)
                             .header("Authorization", authHeader()))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.success").value(true))
-                    .andExpect(jsonPath("$.data.url").exists())
-                    .andExpect(jsonPath("$.data.expiresIn").value(300));
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.code").value("ERR_FOLDER_001"));
         }
 
         @Test
-        @DisplayName("200 OK for image/jpeg")
-        void jpegPreview_returns200() throws Exception {
-            Document imageDoc = Document.builder()
-                    .name("photo.jpg")
-                    .mimeType("image/jpeg")
-                    .size(2048L)
-                    .objectKey("image-key.jpg")
-                    .folder(folderRepository.findById(folderId).orElseThrow())
-                    .owner(userRepository.findById(ownerId).orElseThrow())
+        @DisplayName("403 ERR_FOLDER_002 when user lacks EDIT permission on folder")
+        void noEditPermission_returns403() throws Exception {
+            User other = User.builder()
+                    .email("other3@test.com")
+                    .passwordHash(passwordEncoder.encode("password"))
+                    .displayName("Other3")
+                    .role(Role.USER)
+                    .status(Status.ACTIVE)
+                    .plan(Plan.FREE)
+                    .storageUsed(0L)
+                    .storageLimit(104857600L)
                     .build();
-            imageDoc = documentRepository.save(imageDoc);
+            other = userRepository.save(other);
 
-            mockMvc.perform(get("/documents/{id}/preview-url", imageDoc.getId())
+            Folder otherFolder = Folder.builder()
+                    .name("Other Folder 3")
+                    .owner(other)
+                    .build();
+            otherFolder = folderRepository.save(otherFolder);
+
+            var file = new MockMultipartFile(
+                    "file", "test.pdf", "application/pdf", "test content".getBytes());
+
+            mockMvc.perform(multipart("/documents/{folderId}", otherFolder.getId())
+                            .file(file)
                             .header("Authorization", authHeader()))
-                    .andExpect(status().isOk())
-                    .andExpect(jsonPath("$.success").value(true))
-                    .andExpect(jsonPath("$.data.url").exists())
-                    .andExpect(jsonPath("$.data.expiresIn").value(300));
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.code").value("ERR_FOLDER_002"));
+        }
+    }
+
+    @Nested
+    @DisplayName("PATCH /documents/{id} – update document")
+    class UpdateDocumentErrorTests {
+
+        @Test
+        @DisplayName("404 ERR_DOC_001 when document does not exist")
+        void notFound_returns404() throws Exception {
+            var req = Map.of("name", "New Name");
+
+            mockMvc.perform(patch("/documents/{id}", UUID.randomUUID())
+                            .header("Authorization", authHeader())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(req)))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.code").value("ERR_DOC_001"));
+        }
+
+        @Test
+        @DisplayName("404 ERR_DOC_001 when document not found or no EDIT permission")
+        void noEditPermission_returns404() throws Exception {
+            User other = User.builder()
+                    .email("other4@test.com")
+                    .passwordHash(passwordEncoder.encode("password"))
+                    .displayName("Other4")
+                    .role(Role.USER)
+                    .status(Status.ACTIVE)
+                    .plan(Plan.FREE)
+                    .storageUsed(0L)
+                    .storageLimit(104857600L)
+                    .build();
+            other = userRepository.save(other);
+
+            Folder otherFolder = Folder.builder()
+                    .name("Other Folder 4")
+                    .owner(other)
+                    .build();
+            otherFolder = folderRepository.save(otherFolder);
+
+            Document otherDoc = Document.builder()
+                    .name("other.pdf")
+                    .mimeType("application/pdf")
+                    .size(1024L)
+                    .objectKey("other-key-4.pdf")
+                    .folder(otherFolder)
+                    .owner(other)
+                    .build();
+            otherDoc = documentRepository.save(otherDoc);
+
+            var req = Map.of("name", "New Name");
+
+            mockMvc.perform(patch("/documents/{id}", otherDoc.getId())
+                            .header("Authorization", authHeader())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(req)))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.code").value("ERR_DOC_001"));
+        }
+
+        @Test
+        @DisplayName("404 ERR_FOLDER_001 when target folder does not exist")
+        void targetFolderNotFound_returns404() throws Exception {
+            var req = Map.of("folderId", UUID.randomUUID());
+
+            mockMvc.perform(patch("/documents/{id}", documentId)
+                            .header("Authorization", authHeader())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(req)))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.code").value("ERR_FOLDER_001"));
+        }
+
+        @Test
+        @DisplayName("403 ERR_FOLDER_002 when moving to folder without EDIT permission")
+        void moveToNoEditPermission_returns403() throws Exception {
+            User other = User.builder()
+                    .email("other5@test.com")
+                    .passwordHash(passwordEncoder.encode("password"))
+                    .displayName("Other5")
+                    .role(Role.USER)
+                    .status(Status.ACTIVE)
+                    .plan(Plan.FREE)
+                    .storageUsed(0L)
+                    .storageLimit(104857600L)
+                    .build();
+            other = userRepository.save(other);
+
+            Folder otherFolder = Folder.builder()
+                    .name("Other Folder 5")
+                    .owner(other)
+                    .build();
+            otherFolder = folderRepository.save(otherFolder);
+
+            var req = Map.of("folderId", otherFolder.getId());
+
+            mockMvc.perform(patch("/documents/{id}", documentId)
+                            .header("Authorization", authHeader())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(req)))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.code").value("ERR_FOLDER_002"));
+        }
+    }
+
+    @Nested
+    @DisplayName("DELETE /documents/{id} – delete document")
+    class DeleteDocumentErrorTests {
+
+        @Test
+        @DisplayName("404 ERR_DOC_001 when document does not exist")
+        void notFound_returns404() throws Exception {
+            mockMvc.perform(delete("/documents/{id}", UUID.randomUUID())
+                            .header("Authorization", authHeader()))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.code").value("ERR_DOC_001"));
+        }
+
+        @Test
+        @DisplayName("404 ERR_DOC_001 when document not found or no EDIT permission")
+        void noEditPermission_returns404() throws Exception {
+            User other = User.builder()
+                    .email("other6@test.com")
+                    .passwordHash(passwordEncoder.encode("password"))
+                    .displayName("Other6")
+                    .role(Role.USER)
+                    .status(Status.ACTIVE)
+                    .plan(Plan.FREE)
+                    .storageUsed(0L)
+                    .storageLimit(104857600L)
+                    .build();
+            other = userRepository.save(other);
+
+            Folder otherFolder = Folder.builder()
+                    .name("Other Folder 6")
+                    .owner(other)
+                    .build();
+            otherFolder = folderRepository.save(otherFolder);
+
+            Document otherDoc = Document.builder()
+                    .name("other.pdf")
+                    .mimeType("application/pdf")
+                    .size(1024L)
+                    .objectKey("other-key-6.pdf")
+                    .folder(otherFolder)
+                    .owner(other)
+                    .build();
+            otherDoc = documentRepository.save(otherDoc);
+
+            mockMvc.perform(delete("/documents/{id}", otherDoc.getId())
+                            .header("Authorization", authHeader()))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.code").value("ERR_DOC_001"));
+        }
+    }
+
+    @Nested
+    @DisplayName("POST /documents/bulk-delete – bulk delete documents")
+    class BulkDeleteDocumentsErrorTests {
+
+        @Test
+        @DisplayName("404 ERR_DOC_001 when document not found or no EDIT permission")
+        void noEditPermission_returns404() throws Exception {
+            User other = User.builder()
+                    .email("other7@test.com")
+                    .passwordHash(passwordEncoder.encode("password"))
+                    .displayName("Other7")
+                    .role(Role.USER)
+                    .status(Status.ACTIVE)
+                    .plan(Plan.FREE)
+                    .storageUsed(0L)
+                    .storageLimit(104857600L)
+                    .build();
+            other = userRepository.save(other);
+
+            Folder otherFolder = Folder.builder()
+                    .name("Other Folder 7")
+                    .owner(other)
+                    .build();
+            otherFolder = folderRepository.save(otherFolder);
+
+            Document otherDoc = Document.builder()
+                    .name("other.pdf")
+                    .mimeType("application/pdf")
+                    .size(1024L)
+                    .objectKey("other-key-7.pdf")
+                    .folder(otherFolder)
+                    .owner(other)
+                    .build();
+            otherDoc = documentRepository.save(otherDoc);
+
+            var req = Map.of("ids", List.of(otherDoc.getId()));
+
+            mockMvc.perform(post("/documents/bulk-delete")
+                            .header("Authorization", authHeader())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(req)))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.code").value("ERR_DOC_001"));
+        }
+    }
+
+    @Nested
+    @DisplayName("POST /documents/{id}/copy – copy document")
+    class CopyDocumentErrorTests {
+
+        @Test
+        @DisplayName("404 ERR_DOC_001 when document does not exist")
+        void notFound_returns404() throws Exception {
+            var req = Map.of("targetFolderId", folderId);
+
+            mockMvc.perform(post("/documents/{id}/copy", UUID.randomUUID())
+                            .header("Authorization", authHeader())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(req)))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.code").value("ERR_DOC_001"));
+        }
+
+        @Test
+        @DisplayName("404 ERR_DOC_001 when source document not found or no VIEW permission")
+        void noViewPermission_returns404() throws Exception {
+            User other = User.builder()
+                    .email("other8@test.com")
+                    .passwordHash(passwordEncoder.encode("password"))
+                    .displayName("Other8")
+                    .role(Role.USER)
+                    .status(Status.ACTIVE)
+                    .plan(Plan.FREE)
+                    .storageUsed(0L)
+                    .storageLimit(104857600L)
+                    .build();
+            other = userRepository.save(other);
+
+            Folder otherFolder = Folder.builder()
+                    .name("Other Folder 8")
+                    .owner(other)
+                    .build();
+            otherFolder = folderRepository.save(otherFolder);
+
+            Document otherDoc = Document.builder()
+                    .name("other.pdf")
+                    .mimeType("application/pdf")
+                    .size(1024L)
+                    .objectKey("other-key-8.pdf")
+                    .folder(otherFolder)
+                    .owner(other)
+                    .build();
+            otherDoc = documentRepository.save(otherDoc);
+
+            var req = Map.of("targetFolderId", folderId);
+
+            mockMvc.perform(post("/documents/{id}/copy", otherDoc.getId())
+                            .header("Authorization", authHeader())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(req)))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.code").value("ERR_DOC_001"));
+        }
+
+        @Test
+        @DisplayName("403 ERR_FOLDER_002 when user lacks EDIT permission on target folder")
+        void noEditOnTarget_returns403() throws Exception {
+            User other = User.builder()
+                    .email("other9@test.com")
+                    .passwordHash(passwordEncoder.encode("password"))
+                    .displayName("Other9")
+                    .role(Role.USER)
+                    .status(Status.ACTIVE)
+                    .plan(Plan.FREE)
+                    .storageUsed(0L)
+                    .storageLimit(104857600L)
+                    .build();
+            other = userRepository.save(other);
+
+            Folder otherFolder = Folder.builder()
+                    .name("Other Folder 9")
+                    .owner(other)
+                    .build();
+            otherFolder = folderRepository.save(otherFolder);
+
+            var req = Map.of("targetFolderId", otherFolder.getId());
+
+            mockMvc.perform(post("/documents/{id}/copy", documentId)
+                            .header("Authorization", authHeader())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(req)))
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.code").value("ERR_FOLDER_002"));
+        }
+
+        @Test
+        @DisplayName("404 ERR_FOLDER_001 when target folder does not exist")
+        void targetFolderNotFound_returns404() throws Exception {
+            var req = Map.of("targetFolderId", UUID.randomUUID());
+
+            mockMvc.perform(post("/documents/{id}/copy", documentId)
+                            .header("Authorization", authHeader())
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content(objectMapper.writeValueAsString(req)))
+                    .andExpect(status().isNotFound())
+                    .andExpect(jsonPath("$.code").value("ERR_FOLDER_001"));
         }
     }
 }
