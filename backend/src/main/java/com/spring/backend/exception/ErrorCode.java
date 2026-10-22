@@ -35,11 +35,14 @@ public enum ErrorCode {
   METHOD_NOT_ALLOWED(HttpStatus.METHOD_NOT_ALLOWED, "ERR_REQ_003", "HTTP method not supported"),
   NOT_FOUND(HttpStatus.NOT_FOUND, "ERR_REQ_004", "Resource not found"),
   UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "ERR_REQ_005", "Incorrect email or password"),
-SHARE_PERMISSION_CONFLICT(
+  SHARE_PERMISSION_CONFLICT(
     HttpStatus.CONFLICT,
     "ERR_PERM_006",
     "Sharing was changed concurrently. Please reload and try again"
-),
+  ),
+  // ===== Storage =====
+  STORAGE_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "ERR_STORAGE_001", "Storage operation failed"),
+
   // ===== System =====
   INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "ERR_SYS_001", "An unexpected error occurred. Please try again later.");
 

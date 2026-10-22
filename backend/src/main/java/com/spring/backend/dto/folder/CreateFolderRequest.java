@@ -1,24 +1,21 @@
 package com.spring.backend.dto.folder;
 
-import java.util.UUID;
-
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Getter;
+import lombok.Data;
 import lombok.NoArgsConstructor;
-import lombok.Setter;
 
-@Getter
-@Setter
+@Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
 public class CreateFolderRequest {
 
-  @NotBlank(message = "Folder name must not be blank")
+  @NotBlank(message = "Folder name is required")
+  @Size(max = 255, message = "Folder name must not exceed 255 characters")
   private String name;
 
-  // null = tạo folder ở thư mục gốc
-  private UUID parentFolderId;
+  private String parentFolderName;
 }

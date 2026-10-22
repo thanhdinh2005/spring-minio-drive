@@ -9,6 +9,7 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 @Repository
@@ -25,4 +26,20 @@ public interface DocumentRepository extends JpaRepository<Document, UUID> {
 
   // Đếm số document trực tiếp bên trong một folder
   long countByFolder_Id(UUID folderId);
+
+  // Tìm document theo owner và ID (để check ownership)
+  Optional<Document> findByIdAndOwner_Id(UUID id, UUID ownerId);
+
+  // Tìm document trong folder theo owner (để check permission)
+  Optional<Document> findByIdAndFolder_IdAndOwner_Id(UUID id, UUID folderId, UUID ownerId);
+
+  // Tìm kiếm document theo tên (LIKE)
+  @Query("SELECT d FROM Document d JOIN d.folder f WHERE f.owner.id = :ownerId AND LOWER(d.name) LIKE LOWER(CONCAT('%', :keyword, '%'))")
+  List<Document> searchByOwnerIdAndKeyword(@Param("ownerId") UUID ownerId, @Param("keyword") String keyword);
+
+  // Lấy documents trong các folder IDs (dùng cho xóa cascade)
+  List<Document> findByFolder_IdIn(List<UUID> folderIds);
+
+  // Kiểm tra trùng tên trong cùng folder
+  boolean existsByNameAndFolder_IdAndIdNot(String name, UUID folderId, UUID excludeId);
 }
