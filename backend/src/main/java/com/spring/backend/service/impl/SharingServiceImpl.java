@@ -1,6 +1,8 @@
 
 package com.spring.backend.service.impl;
-
+import com.spring.backend.dto.sharing.SharingDetailsResponse;
+import com.spring.backend.entity.Document;
+import com.spring.backend.repository.DocumentRepository;
 import com.spring.backend.dto.sharing.DirectPermissionResponse;
 import com.spring.backend.dto.sharing.SharePermissionRequest;
 import com.spring.backend.dto.sharing.SharePermissionResponse;
@@ -28,6 +30,8 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class SharingServiceImpl implements SharingService {
 
+    private final DocumentRepository documentRepository;
+    private final SharingPermissionResolver sharingPermissionResolver;
     private final FolderRepository folderRepository;
     private final UserRepository userRepository;
     private final PermissionRepository permissionRepository;
@@ -215,6 +219,50 @@ public class SharingServiceImpl implements SharingService {
         return toResponse(saved);
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public SharingDetailsResponse getFolderSharingDetails(
+        UUID folderId,
+        UUID actorId
+    ){
+        Folder folder = requireOwnedFolder(folderId, actorId);
+
+        return SharingDetailsResponse.builder()
+                .resourceId(folder.getId())
+                .resourceName(folder.getName())
+                .ownerId(folder.getOwner().getId())
+                .users(sharingPermissionResolver.resolveForFolder(folder))
+                .build();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public SharingDetailsResponse getDocumentSharingDetails(
+            UUID documentId,
+            UUID actorId
+    ) {
+        Document document = documentRepository.findById(documentId)
+                .orElseThrow(
+                        () -> new AppException(
+                            ErrorCode.DOCUMENT_NOT_FOUND
+                        )
+                );
+        if(actorId == null
+            || !document.getOwner().getId().equals(actorId)){
+                throw new AppException(ErrorCode.DOCUMENT_ACCESS_DENIED);
+        }
+
+        return SharingDetailsResponse.builder()
+                .resourceId(document.getId())
+                .resourceName(document.getName())
+                .ownerId(document.getOwner().getId())
+                .users(
+                    sharingPermissionResolver.resolveForDocument(document)
+                )
+                .build();
+
+    }
+
 
     /*
      * HÀM DÙNG CHUNG: KIỂM TRA OWNER
@@ -304,4 +352,6 @@ public class SharingServiceImpl implements SharingService {
                 .permissionType(permission.getPermissionType())
                 .build();
     }
+
+
 }

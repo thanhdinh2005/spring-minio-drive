@@ -7,7 +7,7 @@ import com.spring.backend.dto.sharing.SharePermissionResponse;
 import com.spring.backend.dto.sharing.UpdatePermissionRequest;
 import java.util.List;
 import java.util.UUID;
-
+import com.spring.backend.dto.sharing.SharingDetailsResponse;
 public interface SharingService {
 
     SharePermissionResponse grantPermission(
@@ -25,5 +25,13 @@ public interface SharingService {
             UpdatePermissionRequest request,
             UUID actorId
     );
+    SharingDetailsResponse getFolderSharingDetails(
+            UUID folderId,
+            UUID actorId
+    );
 
+    SharingDetailsResponse getDocumentSharingDetails(
+            UUID documentId,
+            UUID actorId
+    );
 }

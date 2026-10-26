@@ -15,7 +15,15 @@ public enum PermissionType {
     return this == OWNER;
   }
 
+  private int strength(){
+    return switch(this){
+      case NONE -> 0;
+      case VIEW -> 1;
+      case EDIT -> 2;
+      case OWNER ->3;
+    };
+  }
   public static PermissionType max(PermissionType a, PermissionType b) {
-    return a.ordinal() >= b.ordinal() ? a : b;
+    return a.strength() >= b.strength() ? a : b;
   }
 }

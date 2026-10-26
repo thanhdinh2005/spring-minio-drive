@@ -11,10 +11,21 @@ import com.spring.backend.entity.Permission;
 
 public interface PermissionRepository extends JpaRepository<Permission, UUID> {
 
-    Optional<Permission> findByFolder_IdAndSharedWithUser_Id(UUID folderId, UUID sharedWithUserId);
+    Optional<Permission> findByFolder_IdAndSharedWithUser_Id(
+    UUID folderId,
+    UUID userId
+);
 
     @EntityGraph(attributePaths = {"sharedWithUser", "grantedBy"})
     List<Permission> findByFolder_IdAndSharedWithUserIsNotNullOrderByCreatedAtDesc(UUID folderId);
 
-
+    @EntityGraph(attributePaths = {
+            "folder",
+            "sharedWithUser",
+            "grantedBy"
+    })
+    List<Permission>
+            findByFolder_IdInAndSharedWithUserIsNotNullOrderByCreatedAtDesc(
+                    List<UUID> folderIds
+            );
 }
