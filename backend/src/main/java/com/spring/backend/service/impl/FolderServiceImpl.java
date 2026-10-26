@@ -5,6 +5,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -450,5 +451,14 @@ public class FolderServiceImpl implements FolderService {
       .createdAt(document.getCreatedAt())
       .updatedAt(document.getUpdatedAt())
       .build();
+  }
+
+  @Override
+  public Page<FolderResponse> filterFolders(UUID userId, String name, String parentFolder, int pageNo, int pageSize, String sortBy, String sortDir) {
+    int size = Math.max(pageSize, 1);
+    int page = Math.max(pageNo, 0);
+    Pageable pageable = PageRequest.of(page, size, buildSort(sortBy, sortDir));
+    Page<Folder> pages = folderRepository.filterFolders(userId, name, parentFolder, pageable);
+    return pages.map(this::toFolderResponse);
   }
 }

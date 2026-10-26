@@ -40,6 +40,15 @@ public interface FolderRepository extends JpaRepository<Folder, UUID> {
   // Lấy tất cả folder của user (dùng cho tree view)
   List<Folder> findByOwner_Id(UUID ownerId);
 
+  // Lọc folder theo điều kiện
+  @Query("SELECT f FROM Folder f WHERE f.owner.id = :ownerId " +
+    "AND (:name IS NULL OR f.name LIKE CONCAT('%', :name, '%')) " +
+    "AND (:parentFolder IS NULL OR f.parentFolder = :parentFolder)")
+  Page<Folder> filterFolders(@Param("ownerId") UUID ownerId,
+    @Param("name") String name,
+    @Param("parentFolder") String parentFolder,
+    Pageable pageable);
+
   // Tìm folder descendants by parent folder names (để xóa đệ quy)
   @Query("SELECT f FROM Folder f WHERE f.owner.id = :ownerId AND f.parentFolder IN :parentNames")
   List<Folder> findByOwnerIdAndParentFolderIn(@Param("ownerId") UUID ownerId, @Param("parentNames") List<String> parentNames);

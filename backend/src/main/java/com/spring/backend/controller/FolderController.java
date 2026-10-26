@@ -13,7 +13,9 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.data.domain.Page;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.spring.backend.common.AppResponse;
@@ -26,6 +28,7 @@ import com.spring.backend.dto.folder.FolderPathResponse;
 import com.spring.backend.dto.folder.FolderResponse;
 import com.spring.backend.dto.folder.FolderTreeResponse;
 import com.spring.backend.dto.folder.UpdateFolderRequest;
+import com.spring.backend.dto.folder.FolderFilterRequest;
 import com.spring.backend.security.CustomUserDetails;
 import com.spring.backend.service.FolderService;
 
@@ -47,6 +50,17 @@ public class FolderController {
     FolderResponse response = folderService.create(request, me.getId());
     return ResponseEntity.status(HttpStatus.CREATED)
       .body(AppResponse.success(response, HttpStatus.CREATED));
+  }
+
+  @GetMapping("/filter")
+  public ResponseEntity<AppResponse<Page<FolderResponse>>> filter(
+    @ModelAttribute FolderFilterRequest req,
+    @AuthenticationPrincipal CustomUserDetails me
+  ) {
+    Page<FolderResponse> response = folderService.filterFolders(
+      me.getId(), req.getName(), req.getParentFolderName(), req.getPageNo(), req.getPageSize(), req.getSortBy(), req.getSortDir()
+    );
+    return ResponseEntity.ok(AppResponse.success(response));
   }
 
   @GetMapping("/{id}")
@@ -144,4 +158,5 @@ public class FolderController {
     folderService.bulkMove(request, me.getId());
     return ResponseEntity.ok(AppResponse.success(null));
   }
+
 }

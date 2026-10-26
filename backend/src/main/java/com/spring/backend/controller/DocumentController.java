@@ -2,6 +2,7 @@ package com.spring.backend.controller;
 
 import java.util.UUID;
 
+import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -13,6 +14,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.ModelAttribute;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
@@ -22,6 +24,7 @@ import com.spring.backend.dto.document.CopyDocumentRequest;
 import com.spring.backend.dto.document.DocumentResponse;
 import com.spring.backend.dto.document.PresignedUrlResponse;
 import com.spring.backend.dto.document.UpdateDocumentRequest;
+import com.spring.backend.dto.document.DocumentFilterRequest;
 import com.spring.backend.dto.document.UploadDocumentRequest;
 import com.spring.backend.dto.folder.BulkDeleteRequest;
 import com.spring.backend.security.CustomUserDetails;
@@ -47,6 +50,17 @@ public class DocumentController {
     DocumentResponse response = documentService.upload(folderId, request, me.getId());
     return ResponseEntity.status(HttpStatus.CREATED)
       .body(AppResponse.success(response, HttpStatus.CREATED));
+  }
+
+  @GetMapping("/filter")
+  public ResponseEntity<AppResponse<Page<DocumentResponse>>> filter(
+    @ModelAttribute DocumentFilterRequest req,
+    @AuthenticationPrincipal CustomUserDetails me
+  ) {
+    Page<DocumentResponse> response = documentService.filterDocuments(
+      me.getId(), req.getFolderId(), req.getName(), req.getMimeType(), req.getPageNo(), req.getPageSize(), req.getSortBy(), req.getSortDir()
+    );
+    return ResponseEntity.ok(AppResponse.success(response));
   }
 
   @GetMapping("/{id}")
@@ -113,4 +127,5 @@ public class DocumentController {
     DocumentResponse response = documentService.copy(id, request, me.getId());
     return ResponseEntity.ok(AppResponse.success(response));
   }
+
 }

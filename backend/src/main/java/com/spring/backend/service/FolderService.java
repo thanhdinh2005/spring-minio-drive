@@ -13,6 +13,9 @@ import com.spring.backend.dto.folder.UpdateFolderRequest;
 import java.util.List;
 import java.util.UUID;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+
 public interface FolderService {
 
   FolderResponse create(CreateFolderRequest request, UUID ownerId);
@@ -36,4 +39,6 @@ public interface FolderService {
   FolderResponse copy(UUID folderId, CopyFolderRequest request, UUID userId);
 
   void bulkMove(BulkMoveRequest request, UUID userId);
+
+  Page<FolderResponse> filterFolders(UUID userId, String name, String parentFolder, int pageNo, int pageSize, String sortBy, String sortDir);
 }

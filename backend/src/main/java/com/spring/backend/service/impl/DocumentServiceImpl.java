@@ -7,6 +7,10 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -429,5 +433,15 @@ public class DocumentServiceImpl implements DocumentService {
       .createdAt(document.getCreatedAt())
       .updatedAt(document.getUpdatedAt())
       .build();
+  }
+
+  @Override
+  public Page<DocumentResponse> filterDocuments(UUID userId, UUID folderId, String name, String mimeType, int pageNo, int pageSize, String sortBy, String sortDir) {
+    int size = Math.max(pageSize, 1);
+    int page = Math.max(pageNo, 0);
+    Sort sort = Sort.by(Sort.Direction.fromString(sortDir != null && sortDir.equalsIgnoreCase("asc") ? "ASC" : "DESC"), sortBy != null ? sortBy : "updatedAt");
+    Pageable pageable = PageRequest.of(page, size, sort);
+    Page<Document> pages = documentRepository.filterDocuments(userId, folderId, name, mimeType, pageable);
+    return pages.map(this::toDocumentResponse);
   }
 }
