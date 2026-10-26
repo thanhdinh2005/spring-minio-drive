@@ -1,23 +1,28 @@
 package com.spring.backend.dto.folder;
 
 import java.util.List;
-
+import java.util.UUID;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
-import lombok.Getter;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
-@Getter
+@Data
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class FolderContentsResponse {
-  private FolderSummaryResponse folder;
 
-  // Chỉ chứa các item thuộc trang hiện tại (folder được ưu tiên đứng trước document)
+  private FolderInfo folder;
   private List<FolderSummaryResponse> subFolders;
   private List<DocumentSummaryResponse> documents;
 
-  // Metadata phân trang chung cho toàn bộ folder con + document con
-  private int pageNo;
-  private int pageSize;
-  private long totalElements;
-  private int totalPages;
-  private boolean last;
+  @Data
+  @Builder
+  @NoArgsConstructor
+  @AllArgsConstructor
+  public static class FolderInfo {
+    private UUID id;
+    private String name;
+  }
 }

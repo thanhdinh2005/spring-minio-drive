@@ -14,6 +14,9 @@ public interface FolderAccessService {
   // Lấy folder theo id, ném FOLDER_NOT_FOUND (404) nếu không tồn tại
   Folder requireFolder(UUID folderId);
 
+  // Lấy folder theo tên và owner, ném FOLDER_NOT_FOUND (404) nếu không tồn tại
+  Folder requireFolderByName(String folderName, UUID ownerId);
+
   // Suy ra quyền hiệu lực của user trên folder (có kế thừa từ tổ tiên)
   PermissionType getEffectivePermission(Folder folder, UUID userId);
 
