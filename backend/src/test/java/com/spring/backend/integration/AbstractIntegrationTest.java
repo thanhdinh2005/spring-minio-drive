@@ -1,7 +1,10 @@
 package com.spring.backend.integration;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
@@ -43,5 +46,13 @@ public abstract class AbstractIntegrationTest {
 
     registry.add("storage.endpoint", () ->
       "http://" + rustfs.getHost() + ":" + rustfs.getMappedPort(9000));
+  }
+
+  @Configuration
+  static class TestConfig {
+    @Bean
+    ObjectMapper objectMapper() {
+      return new ObjectMapper();
+    }
   }
 }

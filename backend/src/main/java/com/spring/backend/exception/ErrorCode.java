@@ -44,7 +44,8 @@ public enum ErrorCode {
           "A permission already exists for this folder and user"
   ),
   // ===== System =====
-  INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "ERR_SYS_001", "An unexpected error occurred. Please try again later.");
+  INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "ERR_SYS_001", "An unexpected error occurred. Please try again later."),
+  STORAGE_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "ERR_SYS_002", "Storage operation failed");
 
   private final HttpStatus httpStatus;
   private final String code;

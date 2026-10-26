@@ -52,3 +52,23 @@ application:
     jwt:
       expiration: ${TOKEN_EXP:3600000}
       refresh-expiration-ms: ${REFRESH_EXP:86400000}
+
+storage:
+  multipart-threshold: 5242880
+  max-file-size: 10MB
+  allowed-mime-types:
+    - "application/pdf"
+    - "image/jpeg"
+    - "image/png"
+    - "image/gif"
+    - "image/webp"
+    - "application/msword"
+    - "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    - "application/vnd.ms-excel"
+    - "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    - "application/vnd.ms-powerpoint"
+    - "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+    - "application/zip"
+    - "application/x-zip-compressed"
+    - "text/plain"
+    - "text/csv"
