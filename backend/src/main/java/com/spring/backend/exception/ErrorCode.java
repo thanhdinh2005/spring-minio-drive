@@ -24,8 +24,11 @@ public enum ErrorCode {
 
   // ===== Permission =====
   PERMISSION_NOT_FOUND(HttpStatus.NOT_FOUND, "ERR_PERM_001", "Permission not found"),
-  INVALID_SHARE_TARGET(HttpStatus.BAD_REQUEST, "ERR_PERM_002",
-    "Must specify either a user or generate a public link, not both"),
+  INVALID_SHARE_TARGET(
+          HttpStatus.BAD_REQUEST,
+          "ERR_PERM_002",
+          "A recipient is required and must not be the folder owner"
+  ),
   CANNOT_SHARE_WITHOUT_OWNERSHIP(HttpStatus.FORBIDDEN, "ERR_PERM_003", "Only the owner can share this folder"),
   INVALID_SHARE_PERMISSION(HttpStatus.BAD_REQUEST, "ERR_PERM_004",  "Share permission must be VIEW or EDIT"),
   CANNOT_SHARE_WITH_OWNER(HttpStatus.BAD_REQUEST, "ERR_PERM_005", "Cannot share a folder with its owner"),
@@ -36,13 +39,10 @@ public enum ErrorCode {
   NOT_FOUND(HttpStatus.NOT_FOUND, "ERR_REQ_004", "Resource not found"),
   UNAUTHORIZED(HttpStatus.UNAUTHORIZED, "ERR_REQ_005", "Incorrect email or password"),
   SHARE_PERMISSION_CONFLICT(
-    HttpStatus.CONFLICT,
-    "ERR_PERM_006",
-    "Sharing was changed concurrently. Please reload and try again"
+          HttpStatus.CONFLICT,
+          "ERR_PERM_006",
+          "A permission already exists for this folder and user"
   ),
-  // ===== Storage =====
-  STORAGE_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "ERR_STORAGE_001", "Storage operation failed"),
-
   // ===== System =====
   INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "ERR_SYS_001", "An unexpected error occurred. Please try again later.");
 

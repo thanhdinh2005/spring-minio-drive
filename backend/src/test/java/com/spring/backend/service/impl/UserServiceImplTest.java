@@ -1,5 +1,6 @@
 package com.spring.backend.service.impl;
 
+import com.spring.backend.dto.admin.UpdateUserStatusResponse;
 import com.spring.backend.dto.auth.UpgradeResponse;
 import com.spring.backend.dto.auth.UserResponse;
 import com.spring.backend.dto.user.StorageUsageResponse;
@@ -25,7 +26,9 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.Mockito.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 @ExtendWith(MockitoExtension.class)
@@ -150,6 +153,39 @@ class UserServiceImplTest {
 
       verify(userRepository).save(mockUser);
     }
+
+    @Nested
+    @DisplayName("updateUserStatus")
+    class UpdateUserStatusTests {
+
+      @Test
+      @DisplayName("Thành công - cập nhật status sang LOCKED")
+      void updateUserStatus_Success() {
+        given(userRepository.findById(userId)).willReturn(Optional.of(mockUser));
+
+        UpdateUserStatusResponse response = userService.updateUserStatus(userId, Status.LOCKED);
+
+        assertThat(response).isNotNull();
+        assertThat(response.getId()).isEqualTo(userId);
+        assertThat(response.getStatus()).isEqualTo(Status.LOCKED);
+        assertThat(mockUser.getStatus()).isEqualTo(Status.LOCKED);
+
+        verify(userRepository).save(mockUser);
+      }
+
+      @Test
+      @DisplayName("Thất bại - user không tồn tại -> throw AppException USER_NOT_FOUND")
+      void updateUserStatus_UserNotFound() {
+        given(userRepository.findById(userId)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> userService.updateUserStatus(userId, Status.LOCKED))
+          .isInstanceOf(AppException.class)
+          .hasFieldOrPropertyWithValue("errorCode", ErrorCode.USER_NOT_FOUND);
+
+        verify(userRepository, never()).save(any());
+      }
+    }
+
   }
 
 }
