@@ -237,6 +237,67 @@ class SharingDetailsIntegrationTest extends AbstractIntegrationTest {
     }
 
     @Nested
+    @DisplayName("Sharing details after revoking permissions")
+    class RevokePermissionDetailsTests {
+
+        @Test
+        @DisplayName("parent VIEW survives child EDIT revocation until its own source is revoked")
+        void revocationRecalculatesFolderAndDocumentPermissionsFromRemainingSources() throws Exception {
+            Folder parent = createFolder("Parent", null);
+            folder.setParentFolder(parent.getId().toString());
+            Permission inherited = saveShare(parent, recipient, PermissionType.VIEW);
+
+            assertSharingState(PermissionType.VIEW, inherited, null);
+
+            Permission direct = saveShare(folder, recipient, PermissionType.EDIT);
+            assertSharingState(PermissionType.EDIT, inherited, direct);
+
+            revoke(direct.getId());
+            assertFalse(permissionRepository.existsById(direct.getId()));
+            assertTrue(permissionRepository.existsById(inherited.getId()));
+            assertSharingState(PermissionType.VIEW, inherited, null);
+
+            revoke(inherited.getId());
+            assertFalse(permissionRepository.existsById(inherited.getId()));
+            assertFalse(permissionRepository.existsById(direct.getId()));
+            for (String resource : new String[]{"folders", "documents"}) {
+                JsonNode data = readDetails(resource, resourceId(resource));
+                assertResource(data, resourceId(resource),
+                    resource.equals("folders") ? folder.getName() : document.getName(), owner);
+                assertEquals(0, data.path("users").size(),
+                    resource + " must have no recipients after the last source is revoked");
+            }
+        }
+
+        private void assertSharingState(PermissionType effective, Permission inherited,
+                                        Permission direct) throws Exception {
+            for (String resource : new String[]{"folders", "documents"}) {
+                JsonNode data = readDetails(resource, resourceId(resource));
+                assertEquals(1, data.path("users").size(), resource);
+                JsonNode user = assertUser(data, recipient, effective);
+                assertEquals(direct == null ? 1 : 2, user.path("sources").size(), resource);
+                assertSource(user, inherited, true);
+                if (direct != null) {
+                    // A containing-folder share is inherited for documents, direct for folders.
+                    assertSource(user, direct, resource.equals("documents"));
+                }
+            }
+        }
+
+        private void revoke(UUID permissionId) throws Exception {
+            entityManager.flush();
+            entityManager.clear();
+            mockMvc.perform(delete("/permissions/{id}", permissionId)
+                    .header("Authorization", "Bearer " + ownerToken))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.status").value(200));
+            entityManager.flush();
+            entityManager.clear();
+        }
+    }
+
+    @Nested
     @DisplayName("Document sharing details")
     class DocumentSharingDetailsTests {
 
