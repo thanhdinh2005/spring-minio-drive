@@ -6,8 +6,8 @@ import com.spring.backend.entity.enums.PermissionType;
 import lombok.Builder;
 import lombok.Getter;
 
-@Getter 
-@Builder 
+@Getter
+@Builder
 public class SharedWithMeResponse {
     private UUID folderId;
     private String name;
