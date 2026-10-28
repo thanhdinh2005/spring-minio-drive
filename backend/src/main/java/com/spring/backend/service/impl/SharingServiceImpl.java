@@ -22,7 +22,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import com.spring.backend.dto.sharing.SharedWithMeResponse;
 import java.util.List;
 import java.util.UUID;
 
@@ -263,7 +263,29 @@ public class SharingServiceImpl implements SharingService {
 
     }
 
+    @Override
+    @Transactional
+    public List<SharedWithMeResponse> getSharedWithMe(UUID actorId){
+        return permissionRepository
+                .findBySharedWithUser_IdAndPublicTokenIsNullAndPermissionTypeInOrderByCreatedAtDesc(
+                    actorId,
+                    List.of(PermissionType.VIEW, PermissionType.EDIT)
+                )
+                .stream()
+                .map(this::toSharedWithMeResponse)
+                .toList();
+    }
 
+    private SharedWithMeResponse toSharedWithMeResponse(
+        Permission permission
+    ){
+        return SharedWithMeResponse.builder()
+                .folderId(permission.getFolder().getId())
+                .name(permission.getFolder().getName())
+                .permissionType(permission.getPermissionType())
+                .sharedBy(permission.getGrantedBy().getEmail())
+                .build();
+    }
     /*
      * HÀM DÙNG CHUNG: KIỂM TRA OWNER
      *

@@ -5,6 +5,7 @@ import com.spring.backend.dto.sharing.DirectPermissionResponse;
 import com.spring.backend.dto.sharing.SharePermissionRequest;
 import com.spring.backend.dto.sharing.SharePermissionResponse;
 import com.spring.backend.dto.sharing.UpdatePermissionRequest;
+import com.spring.backend.dto.sharing.SharedWithMeResponse;
 import java.util.List;
 import java.util.UUID;
 import com.spring.backend.dto.sharing.SharingDetailsResponse;
@@ -34,4 +35,6 @@ public interface SharingService {
             UUID documentId,
             UUID actorId
     );
+
+    List<SharedWithMeResponse> getSharedWithMe(UUID actorId);
 }
