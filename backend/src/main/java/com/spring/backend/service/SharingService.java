@@ -37,4 +37,8 @@ public interface SharingService {
     );
 
     List<SharedWithMeResponse> getSharedWithMe(UUID actorId);
+    void revokePermission(
+            UUID permissionId,
+            UUID actorId
+    );
 }
