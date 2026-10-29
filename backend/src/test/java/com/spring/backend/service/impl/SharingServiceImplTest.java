@@ -2,6 +2,7 @@ package com.spring.backend.service.impl;
 import com.spring.backend.dto.sharing.DirectPermissionResponse;
 import com.spring.backend.dto.sharing.SharePermissionRequest;
 import com.spring.backend.dto.sharing.SharePermissionResponse;
+import com.spring.backend.dto.sharing.SharedWithMeResponse;
 import com.spring.backend.entity.Folder;
 import com.spring.backend.entity.Permission;
 import com.spring.backend.entity.User;
@@ -36,6 +37,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.same;
 import static org.mockito.Mockito.*;
 
 /*
@@ -534,6 +536,80 @@ class SharingServiceImplTest {
                 .findByFolder_IdAndSharedWithUserIsNotNullOrderByCreatedAtDesc(
                     any(UUID.class)
                 );
+        }
+    }
+
+    @Nested
+    @DisplayName("Get Shared With Me Unit Tests")
+    class GetSharedWithMeTests {
+
+        @Test
+        void returnsEmptyListWhenNoSharesExist() {
+            mockShares(List.of());
+
+            List<SharedWithMeResponse> result = sharingService.getSharedWithMe(recipientId);
+
+            assertNotNull(result);
+            assertTrue(result.isEmpty());
+        }
+
+        @ParameterizedTest
+        @EnumSource(value = PermissionType.class, names = {"VIEW", "EDIT"})
+        void mapsPermissionToSharedWithMeResponse(PermissionType type) {
+            mockShares(List.of(permission(type)));
+
+            List<SharedWithMeResponse> result = sharingService.getSharedWithMe(recipientId);
+
+            assertEquals(1, result.size());
+            assertShare(result.get(0), folder, type, owner);
+        }
+
+        @Test
+        void returnsMultipleSharesInRepositoryOrder() {
+            User otherGrantor = User.builder()
+                .id(UUID.randomUUID()).email("other-owner@test.com").build();
+            Folder otherFolder = Folder.builder()
+                .id(UUID.randomUUID()).name("Other Folder").owner(otherGrantor).build();
+            Permission first = Permission.builder()
+                .id(UUID.randomUUID()).folder(otherFolder).sharedWithUser(recipient)
+                .grantedBy(otherGrantor).permissionType(PermissionType.EDIT).build();
+            mockShares(List.of(first, permission(PermissionType.VIEW)));
+
+            List<SharedWithMeResponse> result = sharingService.getSharedWithMe(recipientId);
+
+            assertEquals(2, result.size());
+            assertShare(result.get(0), otherFolder, PermissionType.EDIT, otherGrantor);
+            assertShare(result.get(1), folder, PermissionType.VIEW, owner);
+        }
+
+        @Test
+        void queriesSharesForTheCurrentActorWithSupportedTypes() {
+            mockShares(List.of());
+
+            sharingService.getSharedWithMe(recipientId);
+
+            verify(permissionRepository)
+                .findBySharedWithUser_IdAndPublicTokenIsNullAndPermissionTypeInOrderByCreatedAtDesc(
+                    recipientId, List.of(PermissionType.VIEW, PermissionType.EDIT));
+            verifyNoMoreInteractions(permissionRepository);
+            verifyNoInteractions(folderRepository, userRepository);
+        }
+
+        private void mockShares(List<Permission> shares) {
+            when(permissionRepository
+                .findBySharedWithUser_IdAndPublicTokenIsNullAndPermissionTypeInOrderByCreatedAtDesc(
+                    recipientId, List.of(PermissionType.VIEW, PermissionType.EDIT)))
+                .thenReturn(shares);
+        }
+
+        private void assertShare(SharedWithMeResponse actual, Folder expectedFolder,
+                                 PermissionType expectedType, User grantor) {
+            assertAll(
+                () -> assertEquals(expectedFolder.getId(), actual.getFolderId()),
+                () -> assertEquals(expectedFolder.getName(), actual.getName()),
+                () -> assertEquals(expectedType, actual.getPermissionType()),
+                () -> assertEquals(grantor.getEmail(), actual.getSharedBy())
+            );
         }
     }
 
