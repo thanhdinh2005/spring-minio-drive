@@ -17,15 +17,22 @@ import com.spring.backend.repository.PermissionRepository;
 import com.spring.backend.repository.UserRepository;
 import com.spring.backend.service.SharingService;
 import com.spring.backend.dto.sharing.UpdatePermissionRequest;
+import com.spring.backend.dto.sharing.PublicLinkResponse;
+import com.spring.backend.dto.folder.DocumentSummaryResponse;
+import com.spring.backend.dto.folder.FolderContentsResponse;
+import com.spring.backend.dto.folder.FolderSummaryResponse;
+
 import lombok.RequiredArgsConstructor;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 import java.util.UUID;
-
+import java.security.SecureRandom;
+import java.util.Base64;
 @Service
 @RequiredArgsConstructor
 public class SharingServiceImpl implements SharingService {
@@ -35,7 +42,10 @@ public class SharingServiceImpl implements SharingService {
     private final FolderRepository folderRepository;
     private final UserRepository userRepository;
     private final PermissionRepository permissionRepository;
+    private static final SecureRandom TOKEN__RANDOM = new SecureRandom();
 
+    @Value("${app.public-folder-base-url:http://localhost:8081/api/public/folders}")
+    private String publicFolderBaseUrl;
     /*
      * CHỨC NĂNG 1: CẤP QUYỀN CHIA SẺ
      *
@@ -263,6 +273,180 @@ public class SharingServiceImpl implements SharingService {
 
     }
 
+    @Override 
+    @Transactional 
+    public PublicLinkResponse createOrGetPublicLink(
+            UUID folderId,
+            UUID actorId
+    ){
+        Folder folder = folderRepository.findByIdForUpdate(folderId)
+                .orElseThrow(
+                        () -> new AppException(ErrorCode.FOLDER_NOT_FOUND)
+                );
+
+        if(actorId == null
+            || !folder.getOwner().getId().equals(actorId)){
+                throw new AppException(
+                    ErrorCode.CANNOT_SHARE_WITHOUT_OWNERSHIP
+                );
+        }
+        Permission permission = permissionRepository
+                .findByFolder_IdAndSharedWithUserIsNullAndPublicTokenIsNotNull(
+                    folderId
+                )
+                .orElseGet(() -> {
+                Permission publicLink = Permission.builder()
+                        .folder(folder)
+                        .sharedWithUser(null)
+                        .permissionType(PermissionType.VIEW)
+                        .publicToken(generatePublicToken())
+                        .grantedBy(folder.getOwner())
+                        .build();
+
+                return permissionRepository.saveAndFlush(publicLink);
+            });
+            
+        return toPublicLinkResponse(permission);
+
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public FolderContentsResponse getPublicFolderContents(String token) {
+        if (token == null || token.isBlank()) {
+            throw new AppException(ErrorCode.PUBLIC_LINK_NOT_FOUND);
+        }
+
+        Permission permission = permissionRepository
+                .findByPublicTokenAndSharedWithUserIsNullAndPermissionType(
+                        token,
+                        PermissionType.VIEW
+                )
+                .orElseThrow(
+                        () -> new AppException(
+                                ErrorCode.PUBLIC_LINK_NOT_FOUND
+                        )
+                );
+
+        Folder folder = permission.getFolder();
+        UUID ownerId = folder.getOwner().getId();
+
+        long matchingFolders = folderRepository
+                .countByOwner_IdAndName(ownerId, folder.getName());
+
+        if (matchingFolders != 1) {
+            throw new AppException(ErrorCode.PUBLIC_LINK_NOT_FOUND);
+        }
+
+        List<FolderSummaryResponse> subFolders = folderRepository
+                .findByOwner_IdAndParentFolder(
+                        ownerId,
+                        folder.getName()
+                )
+                .stream()
+                .map(this::toPublicFolderSummary)
+                .toList();
+
+        List<DocumentSummaryResponse> documents = documentRepository
+                .findByFolder_Id(folder.getId())
+                .stream()
+                .map(this::toPublicDocumentSummary)
+                .toList();
+
+        return FolderContentsResponse.builder()
+                .folder(
+                        FolderContentsResponse.FolderInfo.builder()
+                                .id(folder.getId())
+                                .name(folder.getName())
+                                .build()
+                )
+                .subFolders(subFolders)
+                .documents(documents)
+                .build();
+    }
+
+    @Override
+    @Transactional
+    public void revokePublicLink(
+            UUID folderId,
+            UUID actorId
+    ) {
+        Folder folder = folderRepository.findByIdForUpdate(folderId)
+                .orElseThrow(
+                        () -> new AppException(ErrorCode.FOLDER_NOT_FOUND)
+                );
+
+        if (actorId == null
+                || !folder.getOwner().getId().equals(actorId)) {
+            throw new AppException(
+                    ErrorCode.CANNOT_SHARE_WITHOUT_OWNERSHIP
+            );
+        }
+
+        Permission publicLink = permissionRepository
+                .findByFolder_IdAndSharedWithUserIsNullAndPublicTokenIsNotNull(
+                        folderId
+                )
+                .orElseThrow(
+                        () -> new AppException(
+                                ErrorCode.PUBLIC_LINK_NOT_FOUND
+                        )
+                );
+
+        permissionRepository.delete(publicLink);
+    }
+
+    private FolderSummaryResponse toPublicFolderSummary(Folder folder) {
+        boolean hasChildren = folderRepository
+                .existsByOwner_IdAndParentFolder(
+                        folder.getOwner().getId(),
+                        folder.getName()
+                );
+
+        return FolderSummaryResponse.builder()
+                .id(folder.getId())
+                .name(folder.getName())
+                .hasChildren(hasChildren)
+                .build();
+    }
+
+    private DocumentSummaryResponse toPublicDocumentSummary(
+            Document document
+    ) {
+        return DocumentSummaryResponse.builder()
+                .id(document.getId())
+                .name(document.getName())
+                .size(document.getSize())
+                .mimeType(document.getMimeType())
+                .createdAt(document.getCreatedAt())
+                .updatedAt(document.getUpdatedAt())
+                .build();
+    }
+
+
+
+    private String generatePublicToken(){
+        byte[] bytes = new byte[32];
+        TOKEN__RANDOM.nextBytes(bytes);
+        
+        return Base64.getUrlEncoder()
+                .withoutPadding()
+                .encodeToString(bytes);
+    }
+
+
+    private PublicLinkResponse toPublicLinkResponse(
+        Permission permission
+    ){
+        String token = permission.getPublicToken();
+
+        String baseUrl = publicFolderBaseUrl.replaceAll("/+$", "");
+    
+        return PublicLinkResponse.builder() 
+                .publicToken(token)
+                .publicUrl(baseUrl + "/" + token)
+                .build();
+    }
 
     /*
      * HÀM DÙNG CHUNG: KIỂM TRA OWNER

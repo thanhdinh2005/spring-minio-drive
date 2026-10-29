@@ -5,9 +5,13 @@ import com.spring.backend.dto.sharing.DirectPermissionResponse;
 import com.spring.backend.dto.sharing.SharePermissionRequest;
 import com.spring.backend.dto.sharing.SharePermissionResponse;
 import com.spring.backend.dto.sharing.UpdatePermissionRequest;
+import com.spring.backend.dto.sharing.PublicLinkResponse;
+import com.spring.backend.dto.sharing.SharingDetailsResponse;
+import com.spring.backend.dto.folder.FolderContentsResponse;
+
 import java.util.List;
 import java.util.UUID;
-import com.spring.backend.dto.sharing.SharingDetailsResponse;
+
 public interface SharingService {
 
     SharePermissionResponse grantPermission(
@@ -34,4 +38,18 @@ public interface SharingService {
             UUID documentId,
             UUID actorId
     );
+
+    PublicLinkResponse createOrGetPublicLink(
+            UUID folderd,
+            UUID actorId
+    );
+
+    FolderContentsResponse getPublicFolderContents(String token);
+
+        void revokePublicLink(
+                UUID folderId,
+                UUID actorId
+        );
+
+
 }
