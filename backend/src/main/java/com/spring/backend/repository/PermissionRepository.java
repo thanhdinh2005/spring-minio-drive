@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 
 import com.spring.backend.entity.enums.PermissionType;
 import com.spring.backend.entity.Permission;
+import com.spring.backend.entity.enums.PermissionType;
 
 public interface PermissionRepository extends JpaRepository<Permission, UUID> {
 
@@ -17,18 +18,34 @@ public interface PermissionRepository extends JpaRepository<Permission, UUID> {
         UUID userId
 );
 
-        @EntityGraph(attributePaths = {"sharedWithUser", "grantedBy"})
-        List<Permission> findByFolder_IdAndSharedWithUserIsNotNullOrderByCreatedAtDesc(UUID folderId);
+    @EntityGraph(attributePaths = {"sharedWithUser", "grantedBy"})
+    List<Permission> findByFolder_IdAndSharedWithUserIsNotNullOrderByCreatedAtDesc(UUID folderId);
 
-        @EntityGraph(attributePaths = {
-                "folder",
-                "sharedWithUser",
-                "grantedBy"
-        })
-        List<Permission>
-                findByFolder_IdInAndSharedWithUserIsNotNullOrderByCreatedAtDesc(
-                        List<UUID> folderIds
-                );
+    @EntityGraph(attributePaths = {
+            "folder",
+            "sharedWithUser",
+            "grantedBy"
+    })
+    List<Permission>
+            findByFolder_IdInAndSharedWithUserIsNotNullOrderByCreatedAtDesc(
+                    List<UUID> folderIds
+            );
+        
+        @EntityGraph(attributePaths = {"folder"})
+        Optional<Permission>
+        findByFolder_IdAndSharedWithUserIsNullAndPublicTokenIsNotNull(
+                UUID folderId
+        );
+
+        @EntityGraph(attributePaths = {"folder"})
+        Optional<Permission>
+        findByPublicTokenAndSharedWithUserIsNullAndPermissionType(
+                String publicToken,
+                PermissionType permissionType
+        );
+
+
+        
 
         @EntityGraph(attributePaths = {"folder", "grantedBy"})
         List<Permission>

@@ -43,6 +43,8 @@ app:
   cors:
     allowed-origins: ${ALLOWED_ORIGINS:http://localhost:5173}
 
+  public-folder-base-url: ${PUBLIC_FOLDER_BASE_URL:http://localhost:8081/api/public/folders}
+
 logging:
   level:
     root: INFO

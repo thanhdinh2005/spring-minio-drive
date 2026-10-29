@@ -43,6 +43,11 @@ public enum ErrorCode {
           "ERR_PERM_006",
           "A permission already exists for this folder and user"
   ),
+  PUBLIC_LINK_NOT_FOUND(
+        HttpStatus.NOT_FOUND,
+        "ERR_PERM_007",
+        "Public link not found or revoked"
+),
   // ===== System =====
   INTERNAL_SERVER_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "ERR_SYS_001", "An unexpected error occurred. Please try again later."),
   STORAGE_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "ERR_SYS_002", "Storage operation failed");
