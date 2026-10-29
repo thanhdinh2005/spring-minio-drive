@@ -18,8 +18,8 @@ public interface PermissionRepository extends JpaRepository<Permission, UUID> {
         UUID userId
 );
 
-        @EntityGraph(attributePaths = {"sharedWithUser", "grantedBy"})
-        List<Permission> findByFolder_IdAndSharedWithUserIsNotNullOrderByCreatedAtDesc(UUID folderId);
+    @EntityGraph(attributePaths = {"sharedWithUser", "grantedBy"})
+    List<Permission> findByFolder_IdAndSharedWithUserIsNotNullOrderByCreatedAtDesc(UUID folderId);
 
     @EntityGraph(attributePaths = {
             "folder",
@@ -43,6 +43,7 @@ public interface PermissionRepository extends JpaRepository<Permission, UUID> {
                 String publicToken,
                 PermissionType permissionType
         );
+
 
         
 
