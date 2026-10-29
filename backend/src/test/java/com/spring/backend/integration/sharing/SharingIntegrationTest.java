@@ -22,6 +22,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.UUID;
@@ -638,6 +639,149 @@ class SharingIntegrationTest extends AbstractIntegrationTest {
                     .content(updateBody("EDIT")))
                 .andExpect(status().isForbidden())
                 .andExpect(jsonPath("$.code").value("ERR_PERM_003"));
+        }
+
+        @Test
+        void ownerCanRevokePermissionAndDeleteTheDatabaseRecord() throws Exception {
+            Permission existing = saveShare(folder, PermissionType.VIEW);
+
+            revoke(existing.getId(), ownerToken)
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.success").value(true))
+                .andExpect(jsonPath("$.status").value(200));
+
+            flushAndClear();
+            assertFalse(permissionRepository.existsById(existing.getId()));
+            assertTrue(permissionRepository.findByFolder_IdAndSharedWithUser_Id(
+                folder.getId(), recipient.getId()).isEmpty());
+        }
+
+        @Test
+        void revokeRequiresAuthenticationAndKeepsThePermission() throws Exception {
+            Permission existing = saveShare(folder, PermissionType.VIEW);
+
+            revoke(existing.getId(), null).andExpect(status().isUnauthorized());
+
+            assertPermissionRetained(existing);
+        }
+
+        @ParameterizedTest
+        @ValueSource(strings = {"NONE", "VIEW", "EDIT"})
+        void nonOwnerCannotRevokeEvenWithEditPermission(String callerPermission) throws Exception {
+            User otherRecipient = createUser("Other Recipient");
+            Permission target = permissionRepository.saveAndFlush(Permission.builder()
+                .folder(folder).sharedWithUser(otherRecipient).grantedBy(owner)
+                .permissionType(PermissionType.VIEW).build());
+            Permission callerShare = callerPermission.equals("NONE") ? null
+                : saveShare(folder, PermissionType.valueOf(callerPermission));
+
+            revoke(target.getId(), recipientToken)
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ERR_PERM_003"));
+
+            assertPermissionRetained(target);
+            if (callerShare != null) {
+                assertPermissionRetained(callerShare);
+            }
+        }
+
+        @Test
+        void ancestorOwnerCannotRevokePermissionOnAnotherOwnersChild() throws Exception {
+            Folder child = folderRepository.saveAndFlush(Folder.builder()
+                .name("OtherOwner-" + UUID.randomUUID()).owner(recipient)
+                .parentFolder(folder.getId().toString()).build());
+            Permission target = permissionRepository.saveAndFlush(Permission.builder()
+                .folder(child).sharedWithUser(owner).grantedBy(recipient)
+                .permissionType(PermissionType.EDIT).build());
+
+            revoke(target.getId(), ownerToken)
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("ERR_PERM_003"));
+
+            assertPermissionRetained(target);
+        }
+
+        @Test
+        void revokingMissingPermissionReturns404() throws Exception {
+            revoke(UUID.randomUUID(), ownerToken)
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("ERR_PERM_001"));
+        }
+
+        @Test
+        void revokingAlreadyDeletedPermissionReturns404() throws Exception {
+            Permission existing = saveShare(folder, PermissionType.EDIT);
+            revoke(existing.getId(), ownerToken).andExpect(status().isOk());
+            flushAndClear();
+            assertFalse(permissionRepository.existsById(existing.getId()));
+
+            revoke(existing.getId(), ownerToken)
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("ERR_PERM_001"));
+
+            flushAndClear();
+            assertFalse(permissionRepository.existsById(existing.getId()));
+        }
+
+        @Test
+        void publicLinkCannotBeRevokedAndRemainsInDatabase() throws Exception {
+            Permission link = permissionRepository.saveAndFlush(Permission.builder()
+                .folder(folder).grantedBy(owner)
+                .permissionType(PermissionType.VIEW)
+                .publicToken(UUID.randomUUID().toString()).build());
+
+            revoke(link.getId(), ownerToken)
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("ERR_PERM_002"));
+
+            assertPermissionRetained(link);
+        }
+
+        @Test
+        void revokingOneRecipientDoesNotAffectAnotherRecipient() throws Exception {
+            Permission target = saveShare(folder, PermissionType.EDIT);
+            User otherRecipient = createUser("Other Recipient");
+            Permission retained = permissionRepository.saveAndFlush(Permission.builder()
+                .folder(folder).sharedWithUser(otherRecipient).grantedBy(owner)
+                .permissionType(PermissionType.VIEW).build());
+
+            revoke(target.getId(), ownerToken).andExpect(status().isOk());
+
+            flushAndClear();
+            assertFalse(permissionRepository.existsById(target.getId()));
+            assertPermissionRetained(retained);
+            mockMvc.perform(get("/folders/{id}/permissions", folder.getId())
+                    .header("Authorization", bearer(ownerToken)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.length()").value(1))
+                .andExpect(jsonPath("$.data[0].id").value(retained.getId().toString()))
+                .andExpect(jsonPath("$.data[0].sharedWithUser.id").value(otherRecipient.getId().toString()))
+                .andExpect(jsonPath("$.data[0].permissionType").value("VIEW"));
+        }
+
+        private ResultActions revoke(UUID id, String token) throws Exception {
+            flushAndClear();
+            var request = delete("/permissions/{id}", id);
+            if (token != null) {
+                request.header("Authorization", bearer(token));
+            }
+            return mockMvc.perform(request);
+        }
+
+        private void flushAndClear() {
+            entityManager.flush();
+            entityManager.clear();
+        }
+
+        private void assertPermissionRetained(Permission expected) {
+            flushAndClear();
+            Permission actual = permissionRepository.findById(expected.getId()).orElseThrow();
+            assertEquals(expected.getFolder().getId(), actual.getFolder().getId());
+            assertEquals(expected.getPermissionType(), actual.getPermissionType());
+            assertEquals(expected.getGrantedBy().getId(), actual.getGrantedBy().getId());
+            assertEquals(expected.getPublicToken(), actual.getPublicToken());
+            assertEquals(expected.getSharedWithUser() == null ? null : expected.getSharedWithUser().getId(),
+                actual.getSharedWithUser() == null ? null : actual.getSharedWithUser().getId());
         }
 
         private Permission saveShare(Folder target, PermissionType type) {
