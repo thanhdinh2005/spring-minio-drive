@@ -28,7 +28,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import com.spring.backend.dto.sharing.SharedWithMeResponse;
 import java.util.List;
 import java.util.UUID;
 import java.security.SecureRandom;
@@ -227,6 +227,34 @@ public class SharingServiceImpl implements SharingService {
                 permissionRepository.saveAndFlush(permission);
 
         return toResponse(saved);
+    }
+
+    @Override
+    @Transactional
+    public void revokePermission(
+        UUID permissionId,
+        UUID actorId
+    ){
+        //lay ra ban ghi quyen
+        Permission permission = permissionRepository
+                .findById(permissionId)
+                .orElseThrow(
+                    () -> new AppException(
+                            ErrorCode.PERMISSION_NOT_FOUND
+                    )
+                );
+
+        requireOwnedFolder(
+            permission.getFolder().getId(),
+            actorId);
+
+        if(permission.getSharedWithUser() == null
+            || permission.getPublicToken() != null){
+                throw new AppException(
+                    ErrorCode.INVALID_SHARE_TARGET
+                );
+        }
+        permissionRepository.delete(permission);
     }
 
     @Override
@@ -446,8 +474,29 @@ public class SharingServiceImpl implements SharingService {
                 .publicToken(token)
                 .publicUrl(baseUrl + "/" + token)
                 .build();
+    @Override
+    @Transactional
+    public List<SharedWithMeResponse> getSharedWithMe(UUID actorId){
+        return permissionRepository
+                .findBySharedWithUser_IdAndPublicTokenIsNullAndPermissionTypeInOrderByCreatedAtDesc(
+                    actorId,
+                    List.of(PermissionType.VIEW, PermissionType.EDIT)
+                )
+                .stream()
+                .map(this::toSharedWithMeResponse)
+                .toList();
     }
 
+    private SharedWithMeResponse toSharedWithMeResponse(
+        Permission permission
+    ){
+        return SharedWithMeResponse.builder()
+                .folderId(permission.getFolder().getId())
+                .name(permission.getFolder().getName())
+                .permissionType(permission.getPermissionType())
+                .sharedBy(permission.getGrantedBy().getEmail())
+                .build();
+    }
     /*
      * HÀM DÙNG CHUNG: KIỂM TRA OWNER
      *

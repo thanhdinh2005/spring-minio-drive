@@ -9,6 +9,7 @@ import com.spring.backend.dto.sharing.PublicLinkResponse;
 import com.spring.backend.dto.sharing.SharingDetailsResponse;
 import com.spring.backend.dto.folder.FolderContentsResponse;
 
+import com.spring.backend.dto.sharing.SharedWithMeResponse;
 import java.util.List;
 import java.util.UUID;
 
@@ -52,4 +53,9 @@ public interface SharingService {
         );
 
 
+    List<SharedWithMeResponse> getSharedWithMe(UUID actorId);
+    void revokePermission(
+            UUID permissionId,
+            UUID actorId
+    );
 }

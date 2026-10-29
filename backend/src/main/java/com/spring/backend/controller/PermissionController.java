@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-
+import org.springframework.web.bind.annotation.DeleteMapping;
 import com.spring.backend.common.AppResponse;
 import com.spring.backend.dto.sharing.SharePermissionResponse;
 import com.spring.backend.dto.sharing.UpdatePermissionRequest;
@@ -50,4 +50,20 @@ public class PermissionController {
                 AppResponse.success(result)
         );
     }
+
+    @DeleteMapping("/{permissionId}")
+    public ResponseEntity<AppResponse<Void>> revokePermission(
+        @PathVariable("permissionId") UUID permissionId,
+        @AuthenticationPrincipal CustomUserDetails me
+    ){
+        sharingService.revokePermission(
+                permissionId,
+                me.getId()
+        );
+        return ResponseEntity.ok(
+                AppResponse.<Void>success(null)
+        );
+    }
+
+
 }
