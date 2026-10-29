@@ -220,6 +220,34 @@ public class SharingServiceImpl implements SharingService {
     }
 
     @Override
+    @Transactional
+    public void revokePermission(
+        UUID permissionId,
+        UUID actorId
+    ){
+        //lay ra ban ghi quyen
+        Permission permission = permissionRepository
+                .findById(permissionId)
+                .orElseThrow(
+                    () -> new AppException(
+                            ErrorCode.PERMISSION_NOT_FOUND
+                    )
+                );
+
+        requireOwnedFolder(
+            permission.getFolder().getId(),
+            actorId);
+
+        if(permission.getSharedWithUser() == null
+            || permission.getPublicToken() != null){
+                throw new AppException(
+                    ErrorCode.INVALID_SHARE_TARGET
+                );
+        }
+        permissionRepository.delete(permission);
+    }
+
+    @Override
     @Transactional(readOnly = true)
     public SharingDetailsResponse getFolderSharingDetails(
         UUID folderId,

@@ -34,4 +34,8 @@ public interface SharingService {
             UUID documentId,
             UUID actorId
     );
+    void revokePermission(
+            UUID permissionId,
+            UUID actorId
+    );
 }

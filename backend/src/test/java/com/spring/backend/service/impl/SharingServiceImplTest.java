@@ -41,7 +41,7 @@ import static org.mockito.Mockito.*;
 /*
  * SHARING SERVICE UNIT TEST
  *
- * Kiểm tra POST cấp quyền, GET quyền trực tiếp và PATCH đổi quyền.
+ * Kiểm tra POST cấp quyền, GET quyền trực tiếp, PATCH đổi quyền và DELETE thu hồi quyền.
  *
  * Sử dụng Mockito để giả lập Repository.
  * Không cần Docker Desktop hoặc database thật.
@@ -534,6 +534,77 @@ class SharingServiceImplTest {
                 .findByFolder_IdAndSharedWithUserIsNotNullOrderByCreatedAtDesc(
                     any(UUID.class)
                 );
+        }
+    }
+
+    @Nested
+    @DisplayName("Revoke Permission Unit Tests")
+    class RevokePermissionTests {
+
+        @ParameterizedTest
+        @EnumSource(value = PermissionType.class, names = {"VIEW", "EDIT"})
+        void ownerDeletesTheExactPermission(PermissionType type) {
+            Permission existing = permission(type);
+            when(permissionRepository.findById(permissionId)).thenReturn(Optional.of(existing));
+            mockOwnedFolder();
+
+            sharingService.revokePermission(permissionId, ownerId);
+
+            verify(permissionRepository).findById(permissionId);
+            verify(permissionRepository).delete(same(existing));
+            verifyNoMoreInteractions(permissionRepository);
+        }
+
+        @Test
+        void rejectsMissingPermissionWithoutDeleting() {
+            when(permissionRepository.findById(permissionId)).thenReturn(Optional.empty());
+
+            assertError(ErrorCode.PERMISSION_NOT_FOUND,
+                () -> sharingService.revokePermission(permissionId, ownerId));
+
+            verify(permissionRepository).findById(permissionId);
+            verifyNoMoreInteractions(permissionRepository);
+            verifyNoInteractions(folderRepository);
+        }
+
+        @Test
+        void rejectsNonOwnerWithoutDeleting() {
+            Permission existing = permission(PermissionType.EDIT);
+            when(permissionRepository.findById(permissionId)).thenReturn(Optional.of(existing));
+            mockOwnedFolder();
+
+            assertError(ErrorCode.CANNOT_SHARE_WITHOUT_OWNERSHIP,
+                () -> sharingService.revokePermission(permissionId, recipientId));
+
+            verify(permissionRepository, never()).delete(any(Permission.class));
+        }
+
+        @Test
+        void rejectsPermissionWithoutRecipientWithoutDeleting() {
+            Permission existing = permission(PermissionType.VIEW);
+            existing.setSharedWithUser(null);
+            // No token: this exercises the missing-recipient guard independently.
+            when(permissionRepository.findById(permissionId)).thenReturn(Optional.of(existing));
+            mockOwnedFolder();
+
+            assertError(ErrorCode.INVALID_SHARE_TARGET,
+                () -> sharingService.revokePermission(permissionId, ownerId));
+
+            verify(permissionRepository, never()).delete(any(Permission.class));
+        }
+
+        @Test
+        void rejectsPermissionWithPublicTokenWithoutDeleting() {
+            Permission existing = permission(PermissionType.VIEW);
+            // Keep the recipient so the public-token guard must reject this record.
+            existing.setPublicToken("public-token");
+            when(permissionRepository.findById(permissionId)).thenReturn(Optional.of(existing));
+            mockOwnedFolder();
+
+            assertError(ErrorCode.INVALID_SHARE_TARGET,
+                () -> sharingService.revokePermission(permissionId, ownerId));
+
+            verify(permissionRepository, never()).delete(any(Permission.class));
         }
     }
 
