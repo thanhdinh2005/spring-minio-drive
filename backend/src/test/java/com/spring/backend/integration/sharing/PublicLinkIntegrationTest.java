@@ -116,31 +116,82 @@ class PublicLinkIntegrationTest extends AbstractIntegrationTest {
         JsonNode data = read(token);
         assertEquals(folder.getId().toString(), data.path("folder").path("id").asString());
         assertEquals(folder.getName(), data.path("folder").path("name").asString());
-        assertEquals(2, data.path("subFolders").size());
-        JsonNode childNode = find(data.path("subFolders"), child.getId());
+        assertEquals(3, data.path("items").size());
+        JsonNode childNode = find(data.path("items"), child.getId());
+        assertEquals("FOLDER", childNode.path("itemType").asString());
         assertEquals(child.getName(), childNode.path("name").asString());
         assertTrue(childNode.path("hasChildren").asBoolean());
-        assertFalse(find(data.path("subFolders"), leaf.getId()).path("hasChildren").asBoolean());
-        assertEquals(1, data.path("documents").size());
-        JsonNode doc = find(data.path("documents"), visible.getId());
+        assertFalse(find(data.path("items"), leaf.getId()).path("hasChildren").asBoolean());
+        JsonNode doc = find(data.path("items"), visible.getId());
+        assertEquals("DOCUMENT", doc.path("itemType").asString());
         assertEquals(visible.getName(), doc.path("name").asString());
         assertEquals(visible.getSize().longValue(), doc.path("size").asLong());
         assertEquals(visible.getMimeType(), doc.path("mimeType").asString());
-        assertFalse(doc.path("createdAt").isMissingNode());
-        assertFalse(doc.path("updatedAt").isMissingNode());
         assertFalse(data.toString().contains(excluded.getId().toString()));
         assertFalse(data.toString().contains(grandchild.getId().toString()));
         assertSafe(data);
     }
 
     @Test
-    void emptyFolderReturnsEmptyArrays() throws Exception {
+    void anonymousVisitorCanBrowseSubFoldersAndDownloadDocumentsWithoutJwt() throws Exception {
+        Folder child = createFolder("Child-" + UUID.randomUUID(), owner, folder);
+        Folder grandchild = createFolder("Grandchild-" + UUID.randomUUID(), owner, child);
+        Document inChild = createDocument(child);
+        Document inGrandchild = createDocument(grandchild);
+        String token = createLink(folder.getId(), ownerToken).path("publicToken").asString();
+
+        JsonNode rootData = read(token);
+        JsonNode childItem = find(rootData.path("items"), child.getId());
+        assertEquals("folders/" + child.getId(), childItem.path("itemUrl").asString());
+
+        JsonNode childData = objectMapper.readTree(
+                getPublicRequest(token, "/folders/" + child.getId())
+                        .andExpect(status().isOk())
+                        .andExpect(header().string("Cache-Control", "no-store"))
+                        .andReturn().getResponse().getContentAsString())
+                .path("data");
+        assertEquals(child.getId().toString(), childData.path("folder").path("id").asString());
+
+        JsonNode docItem = find(childData.path("items"), inChild.getId());
+        assertFalse(docItem.path("downloadUrl").asString().isBlank());
+        assertEquals("documents/" + inChild.getId(), docItem.path("itemUrl").asString());
+
+        getPublicRequest(token, "/documents/" + inChild.getId() + "/download-url")
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.url").isNotEmpty())
+                .andExpect(jsonPath("$.data.expiresIn").value(300));
+        getPublicRequest(token, "/folders/" + grandchild.getId())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.items[0].id").value(inGrandchild.getId().toString()));
+    }
+
+    @Test
+    void anonymousVisitorCannotEscapePublicTreeOrRevokedLink() throws Exception {
+        User otherOwner = createUser("Foreign Owner");
+        Folder foreign = createFolder("Foreign-" + UUID.randomUUID(), otherOwner, null);
+        Document foreignDoc = createDocument(foreign);
+        String token = createLink(folder.getId(), ownerToken).path("publicToken").asString();
+
+        getPublicRequest(token, "/folders/" + foreign.getId()).andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("ERR_PERM_007"));
+        getPublicRequest(token, "/documents/" + foreignDoc.getId() + "/download-url")
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("ERR_DOC_001"));
+
+        Document ownDoc = createDocument(folder);
+        revoke(folder.getId(), ownerToken).andExpect(status().isOk());
+        getPublicRequest(token, "/documents/" + ownDoc.getId() + "/download-url")
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.code").value("ERR_PERM_007"));
+    }
+
+    @Test
+    void emptyFolderReturnsEmptyItems() throws Exception {
         String token = createLink(folder.getId(), ownerToken).path("publicToken").asString();
         JsonNode data = read(token);
-        assertTrue(data.path("subFolders").isArray());
-        assertTrue(data.path("documents").isArray());
-        assertEquals(0, data.path("subFolders").size());
-        assertEquals(0, data.path("documents").size());
+        assertTrue(data.path("items").isArray());
+        assertEquals(0, data.path("items").size());
+        assertEquals(0, data.path("totalElements").asInt());
     }
 
     @ParameterizedTest
@@ -221,12 +272,18 @@ class PublicLinkIntegrationTest extends AbstractIntegrationTest {
 
 
     @Test
-    void rejectsAmbiguousFolderNameWithinSameOwner() throws Exception {
+    void sameNamesUnderDifferentParentsResolveIndependently() throws Exception {
         Folder anotherRoot = createFolder("Other-" + UUID.randomUUID(), owner, null);
-        createFolder(folder.getName(), owner, anotherRoot);
+        Folder homonym = createFolder(folder.getName(), owner, anotherRoot);
+        Folder homonymChild = createFolder("Homonym-" + UUID.randomUUID(), owner, homonym);
+        createDocument(homonym);
+        Folder selectedChild = createFolder("Selected-" + UUID.randomUUID(), owner, folder);
         String token = createLink(folder.getId(), ownerToken).path("publicToken").asString();
-        getPublic(token).andExpect(status().isNotFound())
-            .andExpect(jsonPath("$.code").value("ERR_PERM_007"));
+        JsonNode data = read(token);
+        assertEquals(1, data.path("items").size());
+        find(data.path("items"), selectedChild.getId());
+        assertFalse(data.toString().contains(homonym.getId().toString()));
+        assertFalse(data.toString().contains(homonymChild.getId().toString()));
     }
 
     @Test
@@ -238,9 +295,8 @@ class PublicLinkIntegrationTest extends AbstractIntegrationTest {
         Folder visibleChild = createFolder("Visible-" + UUID.randomUUID(), owner, folder);
         String token = createLink(folder.getId(), ownerToken).path("publicToken").asString();
         JsonNode data = read(token);
-        assertEquals(1, data.path("subFolders").size());
-        find(data.path("subFolders"), visibleChild.getId());
-        assertEquals(0, data.path("documents").size());
+        assertEquals(1, data.path("items").size());
+        find(data.path("items"), visibleChild.getId());
     }
 
     @Test
@@ -279,12 +335,16 @@ class PublicLinkIntegrationTest extends AbstractIntegrationTest {
         return mockMvc.perform(get("/public/folders/{token}", token));
     }
 
+    private ResultActions getPublicRequest(String token, String path) throws Exception {
+        sync();
+        return mockMvc.perform(get("/public/folders/{token}" + path, token));
+    }
+
     private JsonNode read(String token) throws Exception {
         String body = getPublic(token).andExpect(status().isOk())
             .andExpect(header().string("Cache-Control", "no-store"))
             .andExpect(jsonPath("$.success").value(true)).andExpect(jsonPath("$.status").value(200))
-            .andExpect(jsonPath("$.data.subFolders").isArray())
-            .andExpect(jsonPath("$.data.documents").isArray())
+            .andExpect(jsonPath("$.data.items").isArray())
             .andReturn().getResponse().getContentAsString();
         return objectMapper.readTree(body).path("data");
     }
@@ -314,7 +374,7 @@ class PublicLinkIntegrationTest extends AbstractIntegrationTest {
 
     private Folder createFolder(String name, User user, Folder parent) {
         return folderRepository.saveAndFlush(Folder.builder().name(name).owner(user)
-            .parentFolder(parent == null ? null : parent.getName()).build());
+            .parent(parent).build());
     }
 
     private Document createDocument(Folder target) {

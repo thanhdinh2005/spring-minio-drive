@@ -21,6 +21,7 @@ import org.apache.tomcat.util.http.parser.Upgrade;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Objects;
 import java.util.UUID;
 
 @Service
@@ -46,14 +47,20 @@ public class UserServiceImpl implements UserService {
   }
 
   @Override
+  @Transactional
   public StorageUsageResponse getStorageUsage(UUID id) {
     User user = userRepository.findById(id)
       .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
 
-    Long storageUsed = documentRepository.sumSizeByOwnerId(id);
+    // SUM(documents.size) là nguồn duy nhất; đồng bộ lại cột để quota ở upload không bị lệch
+    long storageUsed = documentRepository.sumSizeByOwnerId(id);
+    if (!Objects.equals(user.getStorageUsed(), storageUsed)) {
+      user.setStorageUsed(storageUsed);
+      userRepository.save(user);
+    }
 
     return StorageUsageResponse.builder()
-      .storageUsed(storageUsed != null ? storageUsed : 0L)
+      .storageUsed(storageUsed)
       .storageLimit(user.getStorageLimit())
       .plan(user.getPlan())
       .build();

@@ -54,12 +54,12 @@ ON CONFLICT (id) DO NOTHING;
 
 -- =========================================================
 -- 2. FOLDERS
--- parent_folder stores the parent folder UUID as VARCHAR.
+-- parent_id references the parent folder UUID.
 -- NULL means the folder is at the root.
 -- =========================================================
 
 INSERT INTO folders (
-    id, name, owner_id, parent_folder, created_at, updated_at
+    id, name, owner_id, parent_id, created_at, updated_at
 )
 VALUES
 -- Nguyễn Văn A
@@ -228,7 +228,7 @@ ON CONFLICT (id) DO NOTHING;
 
 -- =========================================================
 -- 4. PERMISSIONS
--- Assumes permission_type supports READ and WRITE.
+-- PermissionType enum values are VIEW / EDIT (see entity.enums.PermissionType).
 -- Each permission targets either a user or a public token.
 -- =========================================================
 
@@ -243,7 +243,7 @@ VALUES
     'd4000000-0000-4000-8000-000000000001',
     'b2000000-0000-4000-8000-000000000001',
     'a1000000-0000-4000-8000-000000000002',
-    'READ', NULL,
+    'VIEW', NULL,
     'a1000000-0000-4000-8000-000000000001',
     now() - INTERVAL '10 days', now()
 ),
@@ -253,7 +253,7 @@ VALUES
     'd4000000-0000-4000-8000-000000000002',
     'b2000000-0000-4000-8000-000000000002',
     'a1000000-0000-4000-8000-000000000003',
-    'WRITE', NULL,
+    'EDIT', NULL,
     'a1000000-0000-4000-8000-000000000001',
     now() - INTERVAL '8 days', now()
 ),
@@ -263,7 +263,7 @@ VALUES
     'd4000000-0000-4000-8000-000000000003',
     'b2000000-0000-4000-8000-000000000005',
     NULL,
-    'READ',
+    'VIEW',
     'demo-public-assignment-001',
     'a1000000-0000-4000-8000-000000000002',
     now() - INTERVAL '5 days', now()
@@ -274,7 +274,7 @@ VALUES
     'd4000000-0000-4000-8000-000000000004',
     'b2000000-0000-4000-8000-000000000006',
     'a1000000-0000-4000-8000-000000000005',
-    'READ', NULL,
+    'VIEW', NULL,
     'a1000000-0000-4000-8000-000000000003',
     now() - INTERVAL '2 days', now()
 )

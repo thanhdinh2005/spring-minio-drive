@@ -15,7 +15,8 @@ public class FolderResponse {
 
   private UUID id;
   private String name;
-  private String parentFolderName;
+  private UUID parentId;
+  private String parentName;
   private UUID ownerId;
   private Instant createdAt;
   private Instant updatedAt;

@@ -138,8 +138,8 @@ class DocumentIntegrationTest extends AbstractIntegrationTest {
         }
 
         @Test
-        @DisplayName("404 ERR_DOC_001 when document not found or no VIEW permission")
-        void noViewPermission_returns404() throws Exception {
+        @DisplayName("403 ERR_FOLDER_002 when document exists but user has no VIEW permission on its folder")
+        void noViewPermission_returns403() throws Exception {
             User other = User.builder()
                     .email("other@test.com")
                     .passwordHash(passwordEncoder.encode("password"))
@@ -170,8 +170,8 @@ class DocumentIntegrationTest extends AbstractIntegrationTest {
 
             mockMvc.perform(get("/documents/{id}/download-url", otherDoc.getId())
                             .header("Authorization", authHeader()))
-                    .andExpect(status().isNotFound())
-                    .andExpect(jsonPath("$.code").value("ERR_DOC_001"));
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.code").value("ERR_FOLDER_002"));
         }
 
         @Test
@@ -200,8 +200,8 @@ class DocumentIntegrationTest extends AbstractIntegrationTest {
         }
 
         @Test
-        @DisplayName("404 ERR_DOC_001 when document not found or no VIEW permission")
-        void noViewPermission_returns404() throws Exception {
+        @DisplayName("403 ERR_FOLDER_002 when document exists but user has no VIEW permission on its folder")
+        void noViewPermission_returns403() throws Exception {
             User other = User.builder()
                     .email("other2@test.com")
                     .passwordHash(passwordEncoder.encode("password"))
@@ -232,8 +232,8 @@ class DocumentIntegrationTest extends AbstractIntegrationTest {
 
             mockMvc.perform(get("/documents/{id}/preview-url", otherDoc.getId())
                             .header("Authorization", authHeader()))
-                    .andExpect(status().isNotFound())
-                    .andExpect(jsonPath("$.code").value("ERR_DOC_001"));
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.code").value("ERR_FOLDER_002"));
         }
 
         @Test
@@ -334,8 +334,8 @@ class DocumentIntegrationTest extends AbstractIntegrationTest {
         }
 
         @Test
-        @DisplayName("404 ERR_DOC_001 when document not found or no EDIT permission")
-        void noEditPermission_returns404() throws Exception {
+        @DisplayName("403 ERR_FOLDER_002 when document exists but user has no EDIT permission on its folder")
+        void noEditPermission_returns403() throws Exception {
             User other = User.builder()
                     .email("other4@test.com")
                     .passwordHash(passwordEncoder.encode("password"))
@@ -370,8 +370,8 @@ class DocumentIntegrationTest extends AbstractIntegrationTest {
                             .header("Authorization", authHeader())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(req)))
-                    .andExpect(status().isNotFound())
-                    .andExpect(jsonPath("$.code").value("ERR_DOC_001"));
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.code").value("ERR_FOLDER_002"));
         }
 
         @Test
@@ -433,8 +433,8 @@ class DocumentIntegrationTest extends AbstractIntegrationTest {
         }
 
         @Test
-        @DisplayName("404 ERR_DOC_001 when document not found or no EDIT permission")
-        void noEditPermission_returns404() throws Exception {
+        @DisplayName("403 ERR_FOLDER_002 when document exists but user has no EDIT permission on its folder")
+        void noEditPermission_returns403() throws Exception {
             User other = User.builder()
                     .email("other6@test.com")
                     .passwordHash(passwordEncoder.encode("password"))
@@ -465,8 +465,8 @@ class DocumentIntegrationTest extends AbstractIntegrationTest {
 
             mockMvc.perform(delete("/documents/{id}", otherDoc.getId())
                             .header("Authorization", authHeader()))
-                    .andExpect(status().isNotFound())
-                    .andExpect(jsonPath("$.code").value("ERR_DOC_001"));
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.code").value("ERR_FOLDER_002"));
         }
     }
 
@@ -475,8 +475,8 @@ class DocumentIntegrationTest extends AbstractIntegrationTest {
     class BulkDeleteDocumentsErrorTests {
 
         @Test
-        @DisplayName("404 ERR_DOC_001 when document not found or no EDIT permission")
-        void noEditPermission_returns404() throws Exception {
+        @DisplayName("403 ERR_FOLDER_002 when document exists but user has no EDIT permission on its folder")
+        void noEditPermission_returns403() throws Exception {
             User other = User.builder()
                     .email("other7@test.com")
                     .passwordHash(passwordEncoder.encode("password"))
@@ -511,8 +511,8 @@ class DocumentIntegrationTest extends AbstractIntegrationTest {
                             .header("Authorization", authHeader())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(req)))
-                    .andExpect(status().isNotFound())
-                    .andExpect(jsonPath("$.code").value("ERR_DOC_001"));
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.code").value("ERR_FOLDER_002"));
         }
     }
 
@@ -534,8 +534,8 @@ class DocumentIntegrationTest extends AbstractIntegrationTest {
         }
 
         @Test
-        @DisplayName("404 ERR_DOC_001 when source document not found or no VIEW permission")
-        void noViewPermission_returns404() throws Exception {
+        @DisplayName("403 ERR_FOLDER_002 when source document exists but user has no VIEW permission on its folder")
+        void noViewPermission_returns403() throws Exception {
             User other = User.builder()
                     .email("other8@test.com")
                     .passwordHash(passwordEncoder.encode("password"))
@@ -570,8 +570,8 @@ class DocumentIntegrationTest extends AbstractIntegrationTest {
                             .header("Authorization", authHeader())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(req)))
-                    .andExpect(status().isNotFound())
-                    .andExpect(jsonPath("$.code").value("ERR_DOC_001"));
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.code").value("ERR_FOLDER_002"));
         }
 
         @Test

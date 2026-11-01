@@ -30,12 +30,6 @@ public class FolderAccessServiceImpl implements FolderAccessService {
   }
 
   @Override
-  public Folder requireFolderByName(String folderName, UUID ownerId) {
-    return folderRepository.findByOwner_IdAndNameAndParentFolder(ownerId, folderName, null)
-      .orElseThrow(() -> new AppException(ErrorCode.FOLDER_NOT_FOUND));
-  }
-
-  @Override
   public PermissionType getEffectivePermission(Folder folder, UUID userId) {
     PermissionType effective = PermissionType.NONE;
     Folder current = folder;
@@ -58,7 +52,7 @@ public class FolderAccessServiceImpl implements FolderAccessService {
         effective = PermissionType.VIEW;
       }
 
-      current = findParent(current);
+      current = current.getParent();
     }
 
     return effective;
@@ -85,29 +79,5 @@ public class FolderAccessServiceImpl implements FolderAccessService {
     if (getEffectivePermission(folder, userId) != PermissionType.OWNER) {
       throw new AppException(ErrorCode.FOLDER_ACCESS_DENIED);
     }
-  }
-
-  private Folder findParent(Folder folder) {
-    String parentFolderName = folder.getParentFolder();
-    if (parentFolderName == null) {
-      return null;
-    }
-    UUID ownerId = folder.getOwner() != null ? folder.getOwner().getId() : null;
-    if (ownerId == null) {
-      return null;
-    }
-    // Find parent by name and owner
-    return folderRepository.findByOwner_IdAndNameAndParentFolder(ownerId, parentFolderName, getGrandParentName(folder))
-      .orElse(null);
-  }
-
-  private String getGrandParentName(Folder folder) {
-    String parentName = folder.getParentFolder();
-    if (parentName == null) return null;
-    UUID ownerId = folder.getOwner() != null ? folder.getOwner().getId() : null;
-    if (ownerId == null) return null;
-    return folderRepository.findByOwner_IdAndNameAndParentFolder(ownerId, parentName, null)
-      .map(Folder::getParentFolder)
-      .orElse(null);
   }
 }

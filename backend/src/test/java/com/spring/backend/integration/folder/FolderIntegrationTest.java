@@ -111,7 +111,7 @@ class FolderIntegrationTest extends AbstractIntegrationTest {
         void parentNotFound_returns404() throws Exception {
             CreateFolderRequest req = new CreateFolderRequest();
             req.setName("Child");
-            req.setParentFolderName("NonExistentFolder");
+            req.setParentId(UUID.randomUUID());
 
             mockMvc.perform(post("/folders")
                             .header("Authorization", authHeader())
@@ -122,8 +122,8 @@ class FolderIntegrationTest extends AbstractIntegrationTest {
         }
 
         @Test
-        @DisplayName("404 ERR_FOLDER_001 when parent folder not found or no EDIT permission")
-        void noEditPermission_returns404() throws Exception {
+        @DisplayName("403 ERR_FOLDER_002 when parent folder exists but no EDIT permission")
+        void noEditPermission_returns403() throws Exception {
             // Create a second user
             User other = User.builder()
                     .email("other@test.com")
@@ -146,14 +146,14 @@ class FolderIntegrationTest extends AbstractIntegrationTest {
 
             CreateFolderRequest req = new CreateFolderRequest();
             req.setName("Child");
-            req.setParentFolderName(parentFolder.getName());
+            req.setParentId(parentFolder.getId());
 
             mockMvc.perform(post("/folders")
                             .header("Authorization", authHeader())
                             .contentType(MediaType.APPLICATION_JSON)
                             .content(objectMapper.writeValueAsString(req)))
-                    .andExpect(status().isNotFound())
-                    .andExpect(jsonPath("$.code").value("ERR_FOLDER_001"));
+                    .andExpect(status().isForbidden())
+                    .andExpect(jsonPath("$.code").value("ERR_FOLDER_002"));
         }
     }
 
@@ -474,7 +474,7 @@ class FolderIntegrationTest extends AbstractIntegrationTest {
     class FolderTreeErrorTests {
 
         @Test
-        @DisplayName("200 OK returns root folders when parentFolderName is null")
+        @DisplayName("200 OK returns root folders when parentId is null")
         void rootFolders_returns200() throws Exception {
             mockMvc.perform(get("/folders/tree")
                             .header("Authorization", authHeader()))

@@ -48,6 +48,9 @@ public interface SharingService {
 
     FolderContentsResponse getPublicFolderContents(String token);
 
+    // Duyệt một folder con bên trong cây của public link, cùng token gốc
+    FolderContentsResponse getPublicSubFolderContents(String token, UUID folderId);
+
         void revokePublicLink(
                 UUID folderId,
                 UUID actorId

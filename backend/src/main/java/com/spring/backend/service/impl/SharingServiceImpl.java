@@ -16,11 +16,10 @@ import com.spring.backend.repository.FolderRepository;
 import com.spring.backend.repository.PermissionRepository;
 import com.spring.backend.repository.UserRepository;
 import com.spring.backend.service.SharingService;
+import com.spring.backend.service.StorageService;
 import com.spring.backend.dto.sharing.UpdatePermissionRequest;
 import com.spring.backend.dto.sharing.PublicLinkResponse;
-import com.spring.backend.dto.folder.DocumentSummaryResponse;
 import com.spring.backend.dto.folder.FolderContentsResponse;
-import com.spring.backend.dto.folder.FolderSummaryResponse;
 
 import lombok.RequiredArgsConstructor;
 
@@ -28,8 +27,12 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 import com.spring.backend.dto.sharing.SharedWithMeResponse;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.security.SecureRandom;
 import java.util.Base64;
@@ -42,7 +45,9 @@ public class SharingServiceImpl implements SharingService {
     private final FolderRepository folderRepository;
     private final UserRepository userRepository;
     private final PermissionRepository permissionRepository;
+    private final StorageService storageService;
     private static final SecureRandom TOKEN__RANDOM = new SecureRandom();
+    private static final long PUBLIC_PRESIGN_EXPIRES_SECONDS = 300L;
 
     @Value("${app.public-folder-base-url:http://localhost:8081/api/public/folders}")
     private String publicFolderBaseUrl;
@@ -341,45 +346,55 @@ public class SharingServiceImpl implements SharingService {
     @Override
     @Transactional(readOnly = true)
     public FolderContentsResponse getPublicFolderContents(String token) {
+        Folder root = requirePublicRoot(token);
+        return buildPublicContents(root, root);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public FolderContentsResponse getPublicSubFolderContents(String token, UUID folderId) {
+        Folder root = requirePublicRoot(token);
+        Folder folder = folderRepository.findById(folderId)
+                .filter(candidate -> isWithin(candidate, root))
+                .orElseThrow(() -> new AppException(ErrorCode.PUBLIC_LINK_NOT_FOUND));
+        return buildPublicContents(root, folder);
+    }
+
+    private Folder requirePublicRoot(String token) {
         if (token == null || token.isBlank()) {
             throw new AppException(ErrorCode.PUBLIC_LINK_NOT_FOUND);
         }
 
-        Permission permission = permissionRepository
+        return permissionRepository
                 .findByPublicTokenAndSharedWithUserIsNullAndPermissionType(
                         token,
                         PermissionType.VIEW
                 )
-                .orElseThrow(
-                        () -> new AppException(
-                                ErrorCode.PUBLIC_LINK_NOT_FOUND
-                        )
-                );
+                .map(Permission::getFolder)
+                .orElseThrow(() -> new AppException(ErrorCode.PUBLIC_LINK_NOT_FOUND));
+    }
 
-        Folder folder = permission.getFolder();
-        UUID ownerId = folder.getOwner().getId();
-
-        long matchingFolders = folderRepository
-                .countByOwner_IdAndName(ownerId, folder.getName());
-
-        if (matchingFolders != 1) {
-            throw new AppException(ErrorCode.PUBLIC_LINK_NOT_FOUND);
+    // Public link có thể duyệt toàn bộ cây con của folder được chia sẻ
+    private boolean isWithin(Folder candidate, Folder root) {
+        Set<UUID> visited = new HashSet<>();
+        Folder current = candidate;
+        while (current != null && visited.add(current.getId())) {
+            if (current.getId().equals(root.getId())) {
+                return true;
+            }
+            current = current.getParent();
         }
+        return false;
+    }
 
-        List<FolderSummaryResponse> subFolders = folderRepository
-                .findByOwner_IdAndParentFolder(
-                        ownerId,
-                        folder.getName()
-                )
-                .stream()
-                .map(this::toPublicFolderSummary)
-                .toList();
-
-        List<DocumentSummaryResponse> documents = documentRepository
-                .findByFolder_Id(folder.getId())
-                .stream()
-                .map(this::toPublicDocumentSummary)
-                .toList();
+    private FolderContentsResponse buildPublicContents(Folder root, Folder folder) {
+        // Public link không phân trang: trả toàn bộ folder con + document trong một trang.
+        // Document kèm presigned URL để khách tải trực tiếp, không cần JWT.
+        List<FolderContentsResponse.ContentItem> items = new ArrayList<>();
+        folderRepository.findByParent_Id(folder.getId())
+                .forEach(sub -> items.add(publicFolderItem(root, sub)));
+        documentRepository.findByFolder_Id(folder.getId())
+                .forEach(doc -> items.add(publicDocumentItem(root, doc)));
 
         return FolderContentsResponse.builder()
                 .folder(
@@ -388,8 +403,12 @@ public class SharingServiceImpl implements SharingService {
                                 .name(folder.getName())
                                 .build()
                 )
-                .subFolders(subFolders)
-                .documents(documents)
+                .items(items)
+                .pageNo(0)
+                .pageSize(items.size())
+                .totalElements(items.size())
+                .totalPages(items.isEmpty() ? 0 : 1)
+                .last(true)
                 .build();
     }
 
@@ -424,31 +443,50 @@ public class SharingServiceImpl implements SharingService {
         permissionRepository.delete(publicLink);
     }
 
-    private FolderSummaryResponse toPublicFolderSummary(Folder folder) {
-        boolean hasChildren = folderRepository
-                .existsByOwner_IdAndParentFolder(
-                        folder.getOwner().getId(),
-                        folder.getName()
-                );
-
-        return FolderSummaryResponse.builder()
+    private FolderContentsResponse.ContentItem publicFolderItem(Folder root, Folder folder) {
+        return FolderContentsResponse.ContentItem.builder()
+                .itemType("FOLDER")
                 .id(folder.getId())
                 .name(folder.getName())
-                .hasChildren(hasChildren)
+                .hasChildren(folderRepository.existsByParent_Id(folder.getId()))
+                // Subfolder của public link luôn duyệt được bằng chính token của folder gốc
+                .itemUrl(folder.getId().equals(root.getId()) ? null : "folders/" + folder.getId())
                 .build();
     }
 
-    private DocumentSummaryResponse toPublicDocumentSummary(
-            Document document
-    ) {
-        return DocumentSummaryResponse.builder()
+    private FolderContentsResponse.ContentItem publicDocumentItem(Folder root, Document document) {
+        String downloadUrl = storageService.presignGet(
+                document.getObjectKey(),
+                PUBLIC_PRESIGN_EXPIRES_SECONDS,
+                buildAttachmentDisposition(document.getName()));
+        String previewUrl = isInlinePreviewable(document.getMimeType())
+                ? storageService.presignGet(document.getObjectKey(), PUBLIC_PRESIGN_EXPIRES_SECONDS, "inline")
+                : null;
+
+        return FolderContentsResponse.ContentItem.builder()
+                .itemType("DOCUMENT")
                 .id(document.getId())
                 .name(document.getName())
+                .hasChildren(true)
                 .size(document.getSize())
                 .mimeType(document.getMimeType())
-                .createdAt(document.getCreatedAt())
-                .updatedAt(document.getUpdatedAt())
+                .itemUrl("documents/" + document.getId())
+                .downloadUrl(downloadUrl)
+                .previewUrl(previewUrl)
                 .build();
+    }
+
+    private boolean isInlinePreviewable(String mimeType) {
+        if (mimeType == null) {
+            return false;
+        }
+        String normalized = mimeType.toLowerCase(java.util.Locale.ROOT);
+        return normalized.equals("application/pdf") || normalized.startsWith("image/");
+    }
+
+    private String buildAttachmentDisposition(String fileName) {
+        String safeName = fileName == null ? "download" : fileName.replace("\"", "");
+        return "attachment; filename=\"" + safeName + "\"";
     }
 
 
@@ -468,7 +506,17 @@ public class SharingServiceImpl implements SharingService {
     ){
         String token = permission.getPublicToken();
 
-        String baseUrl = publicFolderBaseUrl.replaceAll("/+$", "");
+        // Ưu tiên suy ra scheme://host:port/context-path từ chính request đang chạy
+        // để publicUrl không bị hardcode sai port/host; fallback về cấu hình khi không có request context.
+        String baseUrl;
+        try {
+            baseUrl = ServletUriComponentsBuilder.fromCurrentContextPath()
+                    .path("/public/folders")
+                    .build()
+                    .toString();
+        } catch (IllegalStateException ex) {
+            baseUrl = publicFolderBaseUrl.replaceAll("/+$", "");
+        }
     
         return PublicLinkResponse.builder() 
                 .publicToken(token)

@@ -24,6 +24,12 @@ spring:
 server:
   servlet:
     context-path: /api
+  tomcat:
+    # -1: nuốt hết body thừa khi vượt max-request-size để MaxUploadSizeExceededException trả được 413,
+    # thay vì Tomcat abort connection (mặc định 2MB) -> client treo sau "100 Continue"
+    max-swallow-size: -1
+    connection-timeout: 20s
+    keep-alive-timeout: 30s
 
 springdoc:
   api-docs:
@@ -57,7 +63,8 @@ application:
 
 storage:
   multipart-threshold: 5242880
-  max-file-size: 10MB
+  # byte, phải khớp spring.servlet.multipart.max-file-size để validate 413 thay vì lỗi parse multipart
+  max-file-size: 10485760
   allowed-mime-types:
     - "application/pdf"
     - "image/jpeg"

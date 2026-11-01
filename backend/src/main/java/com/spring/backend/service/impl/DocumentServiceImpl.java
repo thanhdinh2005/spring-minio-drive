@@ -1,25 +1,35 @@
 package com.spring.backend.service.impl;
 
 import java.io.IOException;
+import java.io.InputStream;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 
 import com.spring.backend.common.utils.StorageNameUtils;
 import com.spring.backend.dto.document.CopyDocumentRequest;
 import com.spring.backend.dto.document.DocumentResponse;
 import com.spring.backend.dto.document.PresignedUrlResponse;
+import com.spring.backend.dto.document.UpdateDocumentRequest;
 import com.spring.backend.dto.document.UploadDocumentRequest;
 import com.spring.backend.dto.folder.BulkDeleteRequest;
 import com.spring.backend.entity.Document;
@@ -36,7 +46,6 @@ import com.spring.backend.service.StorageService;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import software.amazon.awssdk.services.s3.model.CompletedMultipartUpload;
 import software.amazon.awssdk.services.s3.model.CompletedPart;
 
 @Service
@@ -46,9 +55,12 @@ import software.amazon.awssdk.services.s3.model.CompletedPart;
 public class DocumentServiceImpl implements DocumentService {
 
   private static final long PRESIGN_EXPIRES_SECONDS = 300L;
+  private static final long PART_SIZE = 5L * 1024 * 1024;
+  private static final Set<String> SORTABLE_FIELDS =
+    Set.of("id", "name", "size", "mimeType", "createdAt", "updatedAt");
+  private static final String DEFAULT_SORT_FIELD = "updatedAt";
 
   private final DocumentRepository documentRepository;
-  private final FolderRepository folderRepository;
   private final UserRepository userRepository;
   private final FolderAccessService folderAccessService;
   private final StorageService storageService;
@@ -56,9 +68,12 @@ public class DocumentServiceImpl implements DocumentService {
   @Value("${storage.allowed-mime-types:application/pdf,image/jpeg,image/png,image/gif,image/webp,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/zip,application/x-zip-compressed,text/plain,text/csv}")
   private List<String> allowedMimeTypes;
 
+  @Value("${storage.max-file-size:10485760}")
+  private long maxFileSize;
+
   @Override
   public PresignedUrlResponse getDownloadUrl(UUID documentId, UUID userId) {
-    Document document = requireDocument(documentId, userId);
+    Document document = requireDocument(documentId);
     folderAccessService.requireView(document.getFolder(), userId);
 
     String contentDisposition = buildAttachmentDisposition(document.getName());
@@ -70,7 +85,7 @@ public class DocumentServiceImpl implements DocumentService {
 
   @Override
   public PresignedUrlResponse getPreviewUrl(UUID documentId, UUID userId) {
-    Document document = requireDocument(documentId, userId);
+    Document document = requireDocument(documentId);
     folderAccessService.requireView(document.getFolder(), userId);
 
     if (!isPreviewable(document.getMimeType())) {
@@ -85,10 +100,24 @@ public class DocumentServiceImpl implements DocumentService {
   }
 
   @Override
+  public PresignedUrlResponse getPublicDownloadUrl(UUID documentId, UUID publicRootFolderId) {
+    Document document = requireDocument(documentId);
+    if (!isWithin(document.getFolder(), publicRootFolderId)) {
+      throw new AppException(ErrorCode.DOCUMENT_NOT_FOUND);
+    }
+
+    String contentDisposition = buildAttachmentDisposition(document.getName());
+    String url = storageService.presignGet(
+      document.getObjectKey(), PRESIGN_EXPIRES_SECONDS, contentDisposition);
+
+    return toResponse(url);
+  }
+
+  @Override
   @Transactional
   public DocumentResponse upload(UUID folderId, UploadDocumentRequest request, UUID userId) {
     MultipartFile file = request.getFile();
-    
+
     // 1. Validate file
     if (file == null || file.isEmpty()) {
       throw new AppException(ErrorCode.VALIDATION_ERROR, Map.of("file", "File is required"));
@@ -101,27 +130,26 @@ public class DocumentServiceImpl implements DocumentService {
     // 3. Validate mimeType
     String mimeType = file.getContentType();
     if (mimeType == null || !isAllowedMimeType(mimeType)) {
-      throw new AppException(ErrorCode.VALIDATION_ERROR, 
+      throw new AppException(ErrorCode.VALIDATION_ERROR,
         Map.of("mimeType", "File type not allowed: " + mimeType));
     }
 
     // 4. Validate file size
     long fileSize = file.getSize();
-    long maxFileSize = parseSize(getMaxFileSizeConfig());
     if (fileSize > maxFileSize) {
       throw new AppException(ErrorCode.DOCUMENT_TOO_LARGE,
         Map.of("maxSize", String.valueOf(maxFileSize), "actualSize", String.valueOf(fileSize)));
     }
 
-    // 5. Check user storage quota
-    User user = userRepository.findById(userId)
+    // 5. Check storage quota từ SUM(documents.size) của owner
+    User owner = userRepository.findById(userId)
       .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-    
-    long currentUsage = user.getStorageUsed();
-    long storageLimit = user.getStorageLimit();
+
+    long currentUsage = documentRepository.sumSizeByOwnerId(userId);
+    long storageLimit = owner.getStorageLimit();
     if (currentUsage + fileSize > storageLimit) {
       throw new AppException(ErrorCode.DOCUMENT_TOO_LARGE,
-        Map.of("storageLimit", String.valueOf(storageLimit), 
+        Map.of("storageLimit", String.valueOf(storageLimit),
                "currentUsage", String.valueOf(currentUsage),
                "fileSize", String.valueOf(fileSize)));
     }
@@ -133,24 +161,16 @@ public class DocumentServiceImpl implements DocumentService {
     // 7. Upload to MinIO
     try {
       if (fileSize <= storageService.getMultipartThreshold()) {
-        // Single-part upload using presigned PUT
-        String presignedUrl = storageService.presignPut(objectKey, Duration.ofMinutes(10).getSeconds(), mimeType);
-        uploadToPresignedUrl(presignedUrl, file, mimeType);
+        String presignedUrl = storageService.presignPut(
+          objectKey, Duration.ofMinutes(10).getSeconds(), mimeType);
+        putBytes(presignedUrl, file.getBytes(), mimeType);
       } else {
-        // Multipart upload
-        String uploadId = storageService.initiateMultipartUpload(objectKey, mimeType);
-        try {
-          uploadMultipart(uploadId, objectKey, file, mimeType);
-          List<CompletedPart> parts = new java.util.ArrayList<>();
-          // Parts are completed in uploadMultipart
-          storageService.completeMultipartUpload(uploadId, objectKey, parts);
-        } catch (Exception e) {
-          storageService.abortMultipartUpload(uploadId, objectKey);
-          throw e;
-        }
+        uploadMultipart(objectKey, mimeType, file);
       }
-    } catch (IOException e) {
-      log.error("Failed to upload file to storage", e);
+    } catch (IOException | RuntimeException e) {
+      log.error("Failed to upload file to storage: {}", objectKey, e);
+      // Dọn object mồ côi ngay (đồng bộ): transaction sẽ rollback nên not dựa vào afterCommit
+      cleanupOrphanObject(objectKey);
       throw new AppException(ErrorCode.STORAGE_ERROR);
     }
 
@@ -158,17 +178,13 @@ public class DocumentServiceImpl implements DocumentService {
     Document document = Document.builder()
       .name(sanitizedName)
       .folder(folder)
-      .owner(user)
+      .owner(owner)
       .objectKey(objectKey)
       .size(fileSize)
       .mimeType(mimeType)
       .build();
 
     Document saved = documentRepository.save(document);
-
-    // 9. Update user storage usage
-    user.setStorageUsed(currentUsage + fileSize);
-    userRepository.save(user);
 
     log.debug("Uploaded document {} (owner={}, folder={}, size={})", saved.getId(), userId, folderId, fileSize);
 
@@ -177,14 +193,15 @@ public class DocumentServiceImpl implements DocumentService {
 
   @Override
   public DocumentResponse getById(UUID documentId, UUID userId) {
-    Document document = requireDocument(documentId, userId);
+    Document document = requireDocument(documentId);
+    folderAccessService.requireView(document.getFolder(), userId);
     return toDocumentResponse(document);
   }
 
   @Override
   @Transactional
-  public DocumentResponse update(UUID documentId, com.spring.backend.dto.document.UpdateDocumentRequest request, UUID userId) {
-    Document document = requireDocument(documentId, userId);
+  public DocumentResponse update(UUID documentId, UpdateDocumentRequest request, UUID userId) {
+    Document document = requireDocument(documentId);
     folderAccessService.requireEdit(document.getFolder(), userId);
 
     boolean rename = request.getName() != null && !request.getName().isBlank();
@@ -194,27 +211,29 @@ public class DocumentServiceImpl implements DocumentService {
       throw new AppException(ErrorCode.VALIDATION_ERROR);
     }
 
+    Folder targetFolder = document.getFolder();
+    if (move) {
+      targetFolder = folderAccessService.requireFolder(request.getFolderId());
+      folderAccessService.requireEdit(targetFolder, userId);
+      if (targetFolder.getId().equals(document.getFolder().getId())) {
+        throw new AppException(ErrorCode.VALIDATION_ERROR,
+          Map.of("folderId", "Document is already in this folder"));
+      }
+    }
+
     if (rename) {
       String newName = request.getName();
       if (!StorageNameUtils.isValidStorageName(newName)) {
         throw new AppException(ErrorCode.INVALID_FOLDER_NAME, Map.of("name", newName));
       }
-      // Check for duplicate name in same folder
-      if (documentRepository.existsByNameAndFolder_IdAndIdNot(newName, document.getFolder().getId(), documentId)) {
-        throw new AppException(ErrorCode.VALIDATION_ERROR, Map.of("name", "File with this name already exists"));
+      if (documentRepository.existsByNameAndFolder_IdAndIdNot(newName, targetFolder.getId(), documentId)) {
+        throw new AppException(ErrorCode.VALIDATION_ERROR,
+          Map.of("name", "File with this name already exists"));
       }
       document.setName(newName);
     }
 
     if (move) {
-      Folder targetFolder = folderAccessService.requireFolder(request.getFolderId());
-      folderAccessService.requireEdit(targetFolder, userId);
-      
-      // Check cycle (not applicable for documents, but check same folder)
-      if (targetFolder.getId().equals(document.getFolder().getId())) {
-        throw new AppException(ErrorCode.VALIDATION_ERROR, Map.of("folderId", "Document is already in this folder"));
-      }
-      
       document.setFolder(targetFolder);
     }
 
@@ -225,27 +244,15 @@ public class DocumentServiceImpl implements DocumentService {
   @Override
   @Transactional
   public void delete(UUID documentId, UUID userId) {
-    Document document = requireDocument(documentId, userId);
+    Document document = requireDocument(documentId);
     folderAccessService.requireEdit(document.getFolder(), userId);
 
-    // Delete from MinIO
-    try {
-      // Note: In real implementation, delete from MinIO
-      // s3Client.deleteObject(DeleteObjectRequest.builder().bucket(bucket).key(document.getObjectKey()).build());
-    } catch (Exception e) {
-      log.error("Failed to delete file from storage: {}", document.getObjectKey(), e);
-      // Continue with DB deletion even if storage deletion fails
-    }
-
-    // Update user storage usage
-    User user = userRepository.findById(userId)
-      .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
-    user.setStorageUsed(Math.max(0, user.getStorageUsed() - document.getSize()));
-    userRepository.save(user);
-
-    // Delete from DB
+    String objectKey = document.getObjectKey();
     documentRepository.delete(document);
-    log.debug("Deleted document {} (owner={})", documentId, userId);
+
+    // Xoá object sau khi commit để rollback không làm mất file vẫn còn tham chiếu
+    deleteOnCompletion(objectKey);
+    log.debug("Deleted document {} (by={})", documentId, userId);
   }
 
   @Override
@@ -259,40 +266,45 @@ public class DocumentServiceImpl implements DocumentService {
   @Override
   @Transactional
   public DocumentResponse copy(UUID documentId, CopyDocumentRequest request, UUID userId) {
-    Document source = requireDocument(documentId, userId);
+    Document source = requireDocument(documentId);
     folderAccessService.requireView(source.getFolder(), userId);
 
-    Folder targetFolder;
-    if (request.getTargetFolderId() != null) {
-      targetFolder = folderAccessService.requireFolder(request.getTargetFolderId());
-    } else {
-      targetFolder = source.getFolder();
-    }
+    Folder targetFolder = request.getTargetFolderId() != null
+      ? folderAccessService.requireFolder(request.getTargetFolderId())
+      : source.getFolder();
     folderAccessService.requireEdit(targetFolder, userId);
 
-    // Generate unique name in target folder
-    String baseName = source.getName();
+    User owner = userRepository.findById(userId)
+      .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+
+    if (documentRepository.sumSizeByOwnerId(userId) + source.getSize() > owner.getStorageLimit()) {
+      throw new AppException(ErrorCode.DOCUMENT_TOO_LARGE,
+        Map.of("storageLimit", String.valueOf(owner.getStorageLimit()),
+               "fileSize", String.valueOf(source.getSize())));
+    }
+
     List<String> existingNames = documentRepository.findByFolder_Id(targetFolder.getId())
       .stream().map(Document::getName).toList();
-    String newName = StorageNameUtils.generateUniqueName(existingNames, baseName + "_copy");
+    String newName = StorageNameUtils.generateUniqueName(existingNames, source.getName() + "_copy");
 
-    // Copy MinIO object (server-side copy)
-    String newObjectKey = String.format("%s/%s/%s_%s", userId, targetFolder.getId(), UUID.randomUUID(), newName);
-    try {
-      // In real implementation: s3Client.copyObject(CopyObjectRequest.builder()...)
-      // For now, we'll use the same object key (not ideal but works for demo)
-    } catch (Exception e) {
-      log.error("Failed to copy file in storage", e);
+    if (!storageService.objectExists(source.getObjectKey())) {
+      log.error("Cannot copy document {}: source object {} is missing", documentId, source.getObjectKey());
       throw new AppException(ErrorCode.STORAGE_ERROR);
     }
 
-    User user = userRepository.findById(userId)
-      .orElseThrow(() -> new AppException(ErrorCode.USER_NOT_FOUND));
+    String newObjectKey = String.format("%s/%s/%s_%s", userId, targetFolder.getId(), UUID.randomUUID(),
+      StorageNameUtils.sanitizeFileName(newName));
+    try {
+      storageService.copyObject(source.getObjectKey(), newObjectKey);
+    } catch (RuntimeException e) {
+      log.error("Failed to copy file in storage: {} -> {}", source.getObjectKey(), newObjectKey, e);
+      throw new AppException(ErrorCode.STORAGE_ERROR);
+    }
 
     Document newDoc = Document.builder()
       .name(newName)
       .folder(targetFolder)
-      .owner(user)
+      .owner(owner)
       .objectKey(newObjectKey)
       .size(source.getSize())
       .mimeType(source.getMimeType())
@@ -302,11 +314,34 @@ public class DocumentServiceImpl implements DocumentService {
     return toDocumentResponse(saved);
   }
 
+  @Override
+  public Page<DocumentResponse> filterDocuments(UUID userId, UUID folderId, String name, String mimeType,
+                                                int pageNo, int pageSize, String sortBy, String sortDir) {
+    int size = Math.max(pageSize, 1);
+    int page = Math.max(pageNo, 0);
+    Pageable pageable = PageRequest.of(page, size, buildSort(sortBy, sortDir));
+    Page<Document> pages = documentRepository.filterDocuments(userId, folderId,
+      normalizeFilter(name), normalizeFilter(mimeType), pageable);
+    return pages.map(this::toDocumentResponse);
+  }
+
   // ========== Helper methods ==========
 
-  private Document requireDocument(UUID documentId, UUID userId) {
-    return documentRepository.findByIdAndOwner_Id(documentId, userId)
+  private Document requireDocument(UUID documentId) {
+    return documentRepository.findById(documentId)
       .orElseThrow(() -> new AppException(ErrorCode.DOCUMENT_NOT_FOUND));
+  }
+
+  private boolean isWithin(Folder candidate, UUID rootFolderId) {
+    Set<UUID> visited = new HashSet<>();
+    Folder current = candidate;
+    while (current != null && visited.add(current.getId())) {
+      if (current.getId().equals(rootFolderId)) {
+        return true;
+      }
+      current = current.getParent();
+    }
+    return false;
   }
 
   private boolean isAllowedMimeType(String mimeType) {
@@ -328,35 +363,27 @@ public class DocumentServiceImpl implements DocumentService {
     return normalized.equals("application/pdf") || normalized.startsWith("image/");
   }
 
-  private long parseSize(String sizeStr) {
-    if (sizeStr == null) return 10485760L; // 10MB default
-    sizeStr = sizeStr.toUpperCase().trim();
-    if (sizeStr.endsWith("KB")) {
-      return Long.parseLong(sizeStr.substring(0, sizeStr.length() - 2)) * 1024;
-    } else if (sizeStr.endsWith("MB")) {
-      return Long.parseLong(sizeStr.substring(0, sizeStr.length() - 2)) * 1024 * 1024;
-    } else if (sizeStr.endsWith("GB")) {
-      return Long.parseLong(sizeStr.substring(0, sizeStr.length() - 2)) * 1024 * 1024 * 1024;
-    }
-    return Long.parseLong(sizeStr);
+  private static String normalizeFilter(String value) {
+    return (value == null || value.isBlank()) ? null : value.trim();
   }
 
-  private String getMaxFileSizeConfig() {
-    // This would come from config, for now default to 10MB
-    return "10MB";
+  private Sort buildSort(String sortBy, String sortDir) {
+    String field = sortBy != null && SORTABLE_FIELDS.contains(sortBy) ? sortBy : DEFAULT_SORT_FIELD;
+    Sort.Direction direction = sortDir != null && sortDir.equalsIgnoreCase("asc")
+      ? Sort.Direction.ASC : Sort.Direction.DESC;
+    return Sort.by(direction, field);
   }
 
-  private void uploadToPresignedUrl(String presignedUrl, MultipartFile file, String contentType) throws IOException {
-    // Use Java HttpClient to PUT file to presigned URL
-    java.net.http.HttpClient client = java.net.http.HttpClient.newHttpClient();
-    java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
+  private void putBytes(String presignedUrl, byte[] body, String contentType) throws IOException {
+    HttpClient client = HttpClient.newHttpClient();
+    HttpRequest request = HttpRequest.newBuilder()
       .uri(java.net.URI.create(presignedUrl))
       .header("Content-Type", contentType)
-      .PUT(java.net.http.HttpRequest.BodyPublishers.ofByteArray(file.getBytes()))
+      .PUT(HttpRequest.BodyPublishers.ofByteArray(body))
       .build();
-    
+
     try {
-      java.net.http.HttpResponse<String> response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
+      HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
       if (response.statusCode() >= 400) {
         throw new IOException("Upload failed with status: " + response.statusCode() + " - " + response.body());
       }
@@ -366,47 +393,88 @@ public class DocumentServiceImpl implements DocumentService {
     }
   }
 
-  private void uploadMultipart(String uploadId, String objectKey, MultipartFile file, String contentType) throws IOException {
-    long partSize = 5 * 1024 * 1024; // 5MB parts
-    byte[] fileBytes = file.getBytes();
-    int totalParts = (int) Math.ceil((double) fileBytes.length / partSize);
-    List<CompletedPart> parts = new java.util.ArrayList<>();
+  private void uploadMultipart(String objectKey, String contentType, MultipartFile file) throws IOException {
+    String uploadId = storageService.initiateMultipartUpload(objectKey, contentType);
+    try {
+      uploadParts(uploadId, objectKey, contentType, file);
+    } catch (IOException | RuntimeException e) {
+      storageService.abortMultipartUpload(uploadId, objectKey);
+      throw e;
+    }
+  }
 
-    for (int i = 0; i < totalParts; i++) {
-      int partNumber = i + 1;
-      int start = i * (int) partSize;
-      int end = Math.min(start + (int) partSize, fileBytes.length);
-      byte[] partData = java.util.Arrays.copyOfRange(fileBytes, start, end);
+  private void uploadParts(String uploadId, String objectKey, String contentType, MultipartFile file) throws IOException {
+    long fileSize = file.getSize();
+    int totalParts = (int) ((fileSize + PART_SIZE - 1) / PART_SIZE);
+    List<CompletedPart> parts = new ArrayList<>(totalParts);
+    HttpClient client = HttpClient.newHttpClient();
 
-      String presignedUrl = storageService.presignUploadPart(uploadId, objectKey, partNumber, Duration.ofMinutes(10).getSeconds());
-      
-      java.net.http.HttpClient client = java.net.http.HttpClient.newHttpClient();
-      java.net.http.HttpRequest request = java.net.http.HttpRequest.newBuilder()
-        .uri(java.net.URI.create(presignedUrl))
-        .header("Content-Type", contentType)
-        .PUT(java.net.http.HttpRequest.BodyPublishers.ofByteArray(partData))
-        .build();
+    // Đọc từng part tuần tự từ stream, không nạp cả file vào RAM
+    try (InputStream stream = file.getInputStream()) {
+      for (int i = 0; i < totalParts; i++) {
+        int partNumber = i + 1;
+        byte[] partData = stream.readNBytes((int) Math.min(PART_SIZE, fileSize - (long) i * PART_SIZE));
 
-      try {
-        java.net.http.HttpResponse<String> response = client.send(request, java.net.http.HttpResponse.BodyHandlers.ofString());
-        if (response.statusCode() >= 400) {
-          throw new IOException("Part upload failed: " + response.statusCode());
-        }
-
-        // Extract ETag from response headers
-        String etag = response.headers().firstValue("ETag").orElse("\"\"").replace("\"", "");
-        CompletedPart part = CompletedPart.builder()
-          .partNumber(partNumber)
-          .eTag(etag)
+        String presignedUrl = storageService.presignUploadPart(
+          uploadId, objectKey, partNumber, Duration.ofMinutes(10).getSeconds());
+        HttpRequest request = HttpRequest.newBuilder()
+          .uri(java.net.URI.create(presignedUrl))
+          .header("Content-Type", contentType)
+          .PUT(HttpRequest.BodyPublishers.ofByteArray(partData))
           .build();
-        parts.add(part);
-      } catch (InterruptedException e) {
-        Thread.currentThread().interrupt();
-        throw new IOException("Part upload interrupted", e);
+
+        try {
+          HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
+          if (response.statusCode() >= 400) {
+            throw new IOException("Part " + partNumber + " upload failed: " + response.statusCode());
+          }
+          // CompleteMultipartUpload cần đúng ETag từng part; thiếu thì fail sớm thay vì gửi parts rỗng
+          String eTag = response.headers().firstValue("ETag")
+            .orElseThrow(() -> new IOException("Part " + partNumber + " response has no ETag header"));
+          parts.add(CompletedPart.builder()
+            .partNumber(partNumber)
+            .eTag(eTag.replace("\"", ""))
+            .build());
+        } catch (InterruptedException e) {
+          Thread.currentThread().interrupt();
+          throw new IOException("Part upload interrupted", e);
+        }
       }
     }
 
     storageService.completeMultipartUpload(uploadId, objectKey, parts);
+  }
+
+  private void cleanupOrphanObject(String objectKey) {
+    try {
+      storageService.deleteObject(objectKey);
+    } catch (RuntimeException e) {
+      log.error("Failed to clean up orphan object {}", objectKey, e);
+    }
+  }
+
+  private void deleteOnCompletion(String objectKey) {
+    Runnable delete = () -> {
+      try {
+        storageService.deleteObject(objectKey);
+      } catch (RuntimeException e) {
+        log.error("Failed to delete object {}", objectKey, e);
+      }
+    };
+
+    if (TransactionSynchronizationManager.isSynchronizationActive()) {
+      TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+        @Override
+        public void afterCompletion(int status) {
+          // Chỉ xoá object khi transaction commit; rollback thì giữ file vì bản ghi DB vẫn còn tham chiếu
+          if (status == TransactionSynchronization.STATUS_COMMITTED) {
+            delete.run();
+          }
+        }
+      });
+    } else {
+      delete.run();
+    }
   }
 
   private String buildAttachmentDisposition(String fileName) {
@@ -433,15 +501,5 @@ public class DocumentServiceImpl implements DocumentService {
       .createdAt(document.getCreatedAt())
       .updatedAt(document.getUpdatedAt())
       .build();
-  }
-
-  @Override
-  public Page<DocumentResponse> filterDocuments(UUID userId, UUID folderId, String name, String mimeType, int pageNo, int pageSize, String sortBy, String sortDir) {
-    int size = Math.max(pageSize, 1);
-    int page = Math.max(pageNo, 0);
-    Sort sort = Sort.by(Sort.Direction.fromString(sortDir != null && sortDir.equalsIgnoreCase("asc") ? "ASC" : "DESC"), sortBy != null ? sortBy : "updatedAt");
-    Pageable pageable = PageRequest.of(page, size, sort);
-    Page<Document> pages = documentRepository.filterDocuments(userId, folderId, name, mimeType, pageable);
-    return pages.map(this::toDocumentResponse);
   }
 }

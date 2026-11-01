@@ -5,6 +5,7 @@ import com.spring.backend.entity.*;
 import com.spring.backend.entity.enums.PermissionType;
 import com.spring.backend.exception.*;
 import com.spring.backend.repository.*;
+import com.spring.backend.service.StorageService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -28,6 +29,7 @@ class PublicLinkServiceTest {
     @Mock DocumentRepository documentRepository;
     @Mock UserRepository userRepository;
     @Mock SharingPermissionResolver sharingPermissionResolver;
+    @Mock StorageService storageService;
     @InjectMocks SharingServiceImpl service;
 
     private User owner;
@@ -130,35 +132,23 @@ class PublicLinkServiceTest {
         verifyNoInteractions(folderRepository, documentRepository);
     }
 
-    @ParameterizedTest
-    @ValueSource(longs = {0, 2})
-    void rejectsAmbiguousFolderBeforeReadingContents(long count) {
-        Permission existing = link();
-        when(permissionRepository.findByPublicTokenAndSharedWithUserIsNullAndPermissionType(existing.getPublicToken(), PermissionType.VIEW))
-            .thenReturn(Optional.of(existing));
-        when(folderRepository.countByOwner_IdAndName(owner.getId(), folder.getName())).thenReturn(count);
-        error(ErrorCode.PUBLIC_LINK_NOT_FOUND, () -> service.getPublicFolderContents(existing.getPublicToken()));
-        verify(folderRepository, never()).findByOwner_IdAndParentFolder(any(), any());
-        verifyNoInteractions(documentRepository);
-    }
-
     private void readableLink() {
         Permission existing = link();
         when(permissionRepository.findByPublicTokenAndSharedWithUserIsNullAndPermissionType("existing-token", PermissionType.VIEW))
             .thenReturn(Optional.of(existing));
-        when(folderRepository.countByOwner_IdAndName(owner.getId(), folder.getName())).thenReturn(1L);
     }
 
     @Test
     void returnsEmptyContentsForEmptyFolder() {
         readableLink();
-        when(folderRepository.findByOwner_IdAndParentFolder(owner.getId(), folder.getName())).thenReturn(List.of());
+        when(folderRepository.findByParent_Id(folder.getId())).thenReturn(List.of());
         when(documentRepository.findByFolder_Id(folder.getId())).thenReturn(List.of());
         var result = service.getPublicFolderContents("existing-token");
         assertEquals(folder.getId(), result.getFolder().getId());
         assertEquals(folder.getName(), result.getFolder().getName());
-        assertTrue(result.getSubFolders().isEmpty());
-        assertTrue(result.getDocuments().isEmpty());
+        assertTrue(result.getItems().isEmpty());
+        assertEquals(0, result.getTotalElements());
+        assertTrue(result.isLast());
     }
 
     @Test
@@ -168,25 +158,89 @@ class PublicLinkServiceTest {
         Folder leaf = Folder.builder().id(UUID.randomUUID()).name("Leaf").owner(owner).build();
         Document doc = Document.builder().id(UUID.randomUUID()).name("Report.pdf").folder(folder)
             .owner(owner).objectKey("private-key").size(123L).mimeType("application/pdf").build();
-        Instant created = Instant.parse("2026-01-01T00:00:00Z");
-        doc.setCreatedAt(created);
-        doc.setUpdatedAt(created.plusSeconds(60));
-        when(folderRepository.findByOwner_IdAndParentFolder(owner.getId(), folder.getName())).thenReturn(List.of(child, leaf));
-        when(folderRepository.existsByOwner_IdAndParentFolder(owner.getId(), child.getName())).thenReturn(true);
-        when(folderRepository.existsByOwner_IdAndParentFolder(owner.getId(), leaf.getName())).thenReturn(false);
+        when(folderRepository.findByParent_Id(folder.getId())).thenReturn(List.of(child, leaf));
+        when(folderRepository.existsByParent_Id(child.getId())).thenReturn(true);
+        when(folderRepository.existsByParent_Id(leaf.getId())).thenReturn(false);
         when(documentRepository.findByFolder_Id(folder.getId())).thenReturn(List.of(doc));
         var result = service.getPublicFolderContents("existing-token");
-        assertEquals(2, result.getSubFolders().size());
-        assertEquals(child.getId(), result.getSubFolders().get(0).getId());
-        assertTrue(result.getSubFolders().get(0).isHasChildren());
-        assertFalse(result.getSubFolders().get(1).isHasChildren());
-        var actual = result.getDocuments().get(0);
+        assertEquals(3, result.getItems().size());
+        var first = result.getItems().get(0);
+        assertEquals("FOLDER", first.getItemType());
+        assertEquals(child.getId(), first.getId());
+        assertTrue(first.isHasChildren());
+        assertFalse(result.getItems().get(1).isHasChildren());
+        var actual = result.getItems().get(2);
+        assertEquals("DOCUMENT", actual.getItemType());
         assertEquals(doc.getId(), actual.getId());
         assertEquals(doc.getName(), actual.getName());
         assertEquals(doc.getSize(), actual.getSize());
         assertEquals(doc.getMimeType(), actual.getMimeType());
-        assertEquals(created, actual.getCreatedAt());
-        assertEquals(doc.getUpdatedAt(), actual.getUpdatedAt());
+    }
+
+    @Test
+    void publicDocumentsCarryPresignedUrlsAndItemPaths() {
+        readableLink();
+        Document pdf = Document.builder().id(UUID.randomUUID()).name("Report.pdf").folder(folder)
+            .owner(owner).objectKey("private/report").size(10L).mimeType("application/pdf").build();
+        Document zip = Document.builder().id(UUID.randomUUID()).name("bundle.zip").folder(folder)
+            .owner(owner).objectKey("private/bundle").size(20L).mimeType("application/zip").build();
+        when(folderRepository.findByParent_Id(folder.getId())).thenReturn(List.of());
+        when(documentRepository.findByFolder_Id(folder.getId())).thenReturn(List.of(pdf, zip));
+        when(storageService.presignGet(anyString(), eq(300L), anyString()))
+            .thenReturn("https://storage/signed");
+
+        var result = service.getPublicFolderContents("existing-token");
+
+        var pdfItem = result.getItems().get(0);
+        assertEquals("documents/" + pdf.getId(), pdfItem.getItemUrl());
+        assertEquals("https://storage/signed", pdfItem.getDownloadUrl());
+        assertEquals("https://storage/signed", pdfItem.getPreviewUrl());
+        var zipItem = result.getItems().get(1);
+        assertNotNull(zipItem.getDownloadUrl());
+        assertNull(zipItem.getPreviewUrl());
+        verify(storageService).presignGet(eq("private/report"), eq(300L),
+            contains("attachment; filename=\"Report.pdf\""));
+        verify(storageService).presignGet(eq("private/bundle"), eq(300L),
+            contains("attachment; filename=\"bundle.zip\""));
+    }
+
+    @Test
+    void subFoldersExposeFolderItemPathAndRootDoesNot() {
+        readableLink();
+        Folder child = Folder.builder().id(UUID.randomUUID()).name("Child").owner(owner).parent(folder).build();
+        when(folderRepository.findByParent_Id(folder.getId())).thenReturn(List.of(child));
+        when(documentRepository.findByFolder_Id(folder.getId())).thenReturn(List.of());
+
+        var result = service.getPublicFolderContents("existing-token");
+
+        assertEquals("folders/" + child.getId(), result.getItems().get(0).getItemUrl());
+        assertEquals(folder.getId(), result.getFolder().getId());
+    }
+
+    @Test
+    void browsesDescendantFolderWithSameToken() {
+        readableLink();
+        Folder child = Folder.builder().id(UUID.randomUUID()).name("Child").owner(owner).parent(folder).build();
+        Folder grandchild = Folder.builder().id(UUID.randomUUID()).name("Grandchild").owner(owner).parent(child).build();
+        when(folderRepository.findById(grandchild.getId())).thenReturn(Optional.of(grandchild));
+        when(folderRepository.findByParent_Id(grandchild.getId())).thenReturn(List.of());
+        when(documentRepository.findByFolder_Id(grandchild.getId())).thenReturn(List.of());
+
+        var result = service.getPublicSubFolderContents("existing-token", grandchild.getId());
+
+        assertEquals(grandchild.getId(), result.getFolder().getId());
+    }
+
+    @Test
+    void rejectsFolderOutsidePublicTree() {
+        readableLink();
+        User other = User.builder().id(UUID.randomUUID()).email("other@test.com").build();
+        Folder foreign = Folder.builder().id(UUID.randomUUID()).name("Foreign").owner(other).build();
+        when(folderRepository.findById(foreign.getId())).thenReturn(Optional.of(foreign));
+
+        error(ErrorCode.PUBLIC_LINK_NOT_FOUND,
+            () -> service.getPublicSubFolderContents("existing-token", foreign.getId()));
+        verifyNoInteractions(storageService);
     }
 
     @Test

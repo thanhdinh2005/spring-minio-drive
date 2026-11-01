@@ -66,7 +66,7 @@ class UserServiceImplTest {
   class GetStorageUsageTests {
 
     @Test
-    @DisplayName("Thành công - tính storage_used trực tiếp bằng SUM(documents.size), không đọc từ user.storageUsed")
+    @DisplayName("Thành công - trả storage_used từ SUM(documents.size) và đồng bộ lại cột user.storageUsed")
     void getStorageUsage_Success() {
       // Given
       Long calculatedStorage = 52428800L;
@@ -79,12 +79,13 @@ class UserServiceImplTest {
       // Then
       assertThat(response).isNotNull();
       assertThat(response.getStorageUsed()).isEqualTo(calculatedStorage);
-      assertThat(response.getStorageUsed()).isNotEqualTo(mockUser.getStorageUsed());
       assertThat(response.getStorageLimit()).isEqualTo(104857600L);
       assertThat(response.getPlan()).isEqualTo(Plan.FREE);
+      assertThat(mockUser.getStorageUsed()).isEqualTo(calculatedStorage);
 
       verify(userRepository).findById(userId);
       verify(documentRepository).sumSizeByOwnerId(userId);
+      verify(userRepository).save(mockUser);
     }
 
     @Test
@@ -102,6 +103,21 @@ class UserServiceImplTest {
       assertThat(response.getStorageUsed()).isEqualTo(0L);
       assertThat(response.getStorageLimit()).isEqualTo(104857600L);
       assertThat(response.getPlan()).isEqualTo(Plan.FREE);
+    }
+
+    @Test
+    @DisplayName("Thành công - user.storageUsed đã khớp SUM thì không ghi lại DB")
+    void getStorageUsage_AlreadyInSync_DoesNotSave() {
+      // Given
+      mockUser.setStorageUsed(1024L);
+      given(userRepository.findById(userId)).willReturn(Optional.of(mockUser));
+      given(documentRepository.sumSizeByOwnerId(userId)).willReturn(1024L);
+
+      // When
+      userService.getStorageUsage(userId);
+
+      // Then
+      verify(userRepository, never()).save(any());
     }
 
     @Test

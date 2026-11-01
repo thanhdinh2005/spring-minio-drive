@@ -20,6 +20,9 @@ public interface DocumentService {
   // Lấy presigned URL để xem trước (chỉ với mimeType hỗ trợ: application/pdf, image/*)
   PresignedUrlResponse getPreviewUrl(UUID documentId, UUID userId);
 
+  // Lấy presigned URL tải file qua public link; document phải nằm trong cây con của publicRoot
+  PresignedUrlResponse getPublicDownloadUrl(UUID documentId, UUID publicRootFolderId);
+
   // Upload file vào folder (multipart)
   DocumentResponse upload(UUID folderId, UploadDocumentRequest request, UUID userId);
 
