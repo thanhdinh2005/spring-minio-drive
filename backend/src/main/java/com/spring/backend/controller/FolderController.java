@@ -58,7 +58,7 @@ public class FolderController {
     @AuthenticationPrincipal CustomUserDetails me
   ) {
     Page<FolderResponse> response = folderService.filterFolders(
-      me.getId(), req.getName(), req.getParentFolderName(), req.getPageNo(), req.getPageSize(), req.getSortBy(), req.getSortDir()
+      me.getId(), req.getName(), req.getParentId(), req.getPageNo(), req.getPageSize(), req.getSortBy(), req.getSortDir()
     );
     return ResponseEntity.ok(AppResponse.success(response));
   }
@@ -105,10 +105,10 @@ public class FolderController {
 
   @GetMapping("/tree")
   public ResponseEntity<AppResponse<FolderTreeResponse>> getTree(
-    @RequestParam(value = "parentFolderName", required = false) String parentFolderName,
+    @RequestParam(value = "parentId", required = false) UUID parentId,
     @AuthenticationPrincipal CustomUserDetails me
   ) {
-    FolderTreeResponse response = folderService.getTree(me.getId(), parentFolderName);
+    FolderTreeResponse response = folderService.getTree(me.getId(), parentId);
     return ResponseEntity.ok(AppResponse.success(response));
   }
 

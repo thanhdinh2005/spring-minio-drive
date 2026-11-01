@@ -14,8 +14,13 @@ import lombok.NoArgsConstructor;
 public class FolderContentsResponse {
 
   private FolderInfo folder;
-  private List<FolderSummaryResponse> subFolders;
-  private List<DocumentSummaryResponse> documents;
+  // Folder và document trộn chung trong một trang, mỗi item cho biết itemType (FOLDER | DOCUMENT)
+  private List<ContentItem> items;
+  private int pageNo;
+  private int pageSize;
+  private long totalElements;
+  private int totalPages;
+  private boolean last;
 
   @Data
   @Builder
@@ -24,5 +29,27 @@ public class FolderContentsResponse {
   public static class FolderInfo {
     private UUID id;
     private String name;
+  }
+
+  @Data
+  @Builder
+  @NoArgsConstructor
+  @AllArgsConstructor
+  public static class ContentItem {
+    private String itemType;
+    private UUID id;
+    private String name;
+    // Folder: có folder con hay không. Document: có file trong storage.
+    private boolean hasChildren;
+    // Chỉ có với DOCUMENT
+    private Long size;
+    private String mimeType;
+    // Chỉ có khi xem qua public link: path tương đối để duyệt/tải, tính từ base public link
+    // Folder con: "folders/{id}" -> GET {public-link}/{token}/folders/{id}
+    // Document:  "documents/{id}" -> GET {public-link}/{token}/documents/{id}/download-url
+    private String itemUrl;
+    // Chỉ có với DOCUMENT qua public link: presigned URL (hết hạn sau 300s)
+    private String downloadUrl;
+    private String previewUrl;
   }
 }

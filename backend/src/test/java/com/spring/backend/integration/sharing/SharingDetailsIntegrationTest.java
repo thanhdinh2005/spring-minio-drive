@@ -131,7 +131,7 @@ class SharingDetailsIntegrationTest extends AbstractIntegrationTest {
         void inheritsRootPermission(PermissionType type) throws Exception {
             Folder root = createFolder("Root", null);
             Folder parent = createFolder("Parent", root);
-            folder.setParentFolder(parent.getId().toString());
+            folder.setParent(parent);
             Permission inherited = saveShare(root, recipient, type);
 
             JsonNode data = readDetails("folders", folder.getId());
@@ -150,7 +150,7 @@ class SharingDetailsIntegrationTest extends AbstractIntegrationTest {
                                                    PermissionType parentType,
                                                    PermissionType expected) throws Exception {
             Folder parent = createFolder("Parent", null);
-            folder.setParentFolder(parent.getId().toString());
+            folder.setParent(parent);
             Permission inherited = saveShare(parent, recipient, parentType);
             Permission direct = saveShare(folder, recipient, directType);
 
@@ -168,7 +168,7 @@ class SharingDetailsIntegrationTest extends AbstractIntegrationTest {
         void groupsMultipleRecipients() throws Exception {
             User secondRecipient = createUser("Second Recipient");
             Folder parent = createFolder("Parent", null);
-            folder.setParentFolder(parent.getId().toString());
+            folder.setParent(parent);
             Permission firstDirect = saveShare(folder, recipient, PermissionType.VIEW);
             Permission firstInherited = saveShare(parent, recipient, PermissionType.EDIT);
             Permission secondDirect = saveShare(folder, secondRecipient, PermissionType.VIEW);
@@ -189,7 +189,7 @@ class SharingDetailsIntegrationTest extends AbstractIntegrationTest {
         @DisplayName("excludes child, sibling, unrelated folder and public link shares")
         void excludesPermissionsOutsideSelectedHierarchy() throws Exception {
             Folder parent = createFolder("Parent", null);
-            folder.setParentFolder(parent.getId().toString());
+            folder.setParent(parent);
             Folder child = createFolder("Child", folder);
             Folder sibling = createFolder("Sibling", parent);
             Folder unrelated = createFolder("Unrelated", null);
@@ -213,7 +213,7 @@ class SharingDetailsIntegrationTest extends AbstractIntegrationTest {
         @DisplayName("reflects an updated ancestor permission in both folder and document details")
         void reflectsPermissionChangesFromDatabase() throws Exception {
             Folder parent = createFolder("Parent", null);
-            folder.setParentFolder(parent.getId().toString());
+            folder.setParent(parent);
             saveShare(folder, recipient, PermissionType.VIEW);
             Permission inherited = saveShare(parent, recipient, PermissionType.VIEW);
 
@@ -244,7 +244,7 @@ class SharingDetailsIntegrationTest extends AbstractIntegrationTest {
         @DisplayName("parent VIEW survives child EDIT revocation until its own source is revoked")
         void revocationRecalculatesFolderAndDocumentPermissionsFromRemainingSources() throws Exception {
             Folder parent = createFolder("Parent", null);
-            folder.setParentFolder(parent.getId().toString());
+            folder.setParent(parent);
             Permission inherited = saveShare(parent, recipient, PermissionType.VIEW);
 
             assertSharingState(PermissionType.VIEW, inherited, null);
@@ -329,7 +329,7 @@ class SharingDetailsIntegrationTest extends AbstractIntegrationTest {
         void inheritsStrongestPermissionAcrossAllLevels() throws Exception {
             Folder root = createFolder("Root", null);
             Folder parent = createFolder("Parent", root);
-            folder.setParentFolder(parent.getId().toString());
+            folder.setParent(parent);
             Permission rootShare = saveShare(root, recipient, PermissionType.VIEW);
             Permission parentShare = saveShare(parent, recipient, PermissionType.EDIT);
             Permission folderShare = saveShare(folder, recipient, PermissionType.VIEW);
@@ -411,7 +411,7 @@ class SharingDetailsIntegrationTest extends AbstractIntegrationTest {
             Folder parent = createFolder("Parent", null);
 
             // Owner sở hữu cha, recipient sở hữu folder con.
-            folder.setParentFolder(parent.getId().toString());
+            folder.setParent(parent);
             folder.setOwner(recipient);
 
             details("folders", folder.getId(), ownerToken)
@@ -450,7 +450,7 @@ class SharingDetailsIntegrationTest extends AbstractIntegrationTest {
         return folderRepository.saveAndFlush(Folder.builder()
             .name(name + "-" + UUID.randomUUID())
             .owner(owner)
-            .parentFolder(parent == null ? null : parent.getId().toString())
+            .parent(parent)
             .build());
     }
 

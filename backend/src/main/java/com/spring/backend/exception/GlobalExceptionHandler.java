@@ -11,6 +11,7 @@ import org.springframework.web.HttpRequestMethodNotSupportedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.NoHandlerFoundException;
 
 import java.util.UUID;
@@ -108,7 +109,17 @@ public class GlobalExceptionHandler {
       .body(AppResponse.error(ErrorCode.FOLDER_ACCESS_DENIED, traceId));
   }
 
-  // ===== 8. Fallback — mọi lỗi không lường trước =====
+  // ===== 8. Upload vượt giới hạn multipart (spring.servlet.multipart.max-file-size / max-request-size) =====
+  @ExceptionHandler(MaxUploadSizeExceededException.class)
+  public ResponseEntity<AppResponse<Void>> handleMaxUploadSize(MaxUploadSizeExceededException ex) {
+    String traceId = generateTraceId();
+    log.warn("[{}] Upload exceeds max size: {}", traceId, ex.getMessage());
+
+    return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+      .body(AppResponse.error(ErrorCode.DOCUMENT_TOO_LARGE, traceId));
+  }
+
+  // ===== 9. Fallback — mọi lỗi không lường trước =====
   @ExceptionHandler(Exception.class)
   public ResponseEntity<AppResponse<Void>> handleUnexpected(Exception ex) {
     String traceId = generateTraceId();

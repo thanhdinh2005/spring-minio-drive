@@ -7,8 +7,6 @@ import com.spring.backend.entity.Folder;
 import com.spring.backend.entity.Permission;
 import com.spring.backend.entity.User;
 import com.spring.backend.entity.enums.PermissionType;
-import com.spring.backend.exception.AppException;
-import com.spring.backend.exception.ErrorCode;
 import com.spring.backend.repository.FolderRepository;
 import com.spring.backend.repository.PermissionRepository;
 
@@ -21,13 +19,11 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.EnumSource;
 import org.junit.jupiter.params.provider.NullSource;
-import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -87,9 +83,7 @@ class SharingPermissionResolverTest {
     }
 
     private void mockParent(Folder child, Folder parent) {
-        child.setParentFolder(parent.getId().toString());
-        when(folderRepository.findById(parent.getId()))
-            .thenReturn(Optional.of(parent));
+        child.setParent(parent);
     }
 
     private void mockPermissions(List<UUID> folderIds, Permission... permissions) {
@@ -169,8 +163,7 @@ class SharingPermissionResolverTest {
             assertRecipient(result.get(0), recipient, PermissionType.EDIT);
             assertEquals(1, result.get(0).getSources().size());
             assertSource(result.get(0).getSources().get(0), inherited, true);
-            verify(folderRepository).findById(parent.getId());
-            verify(folderRepository).findById(root.getId());
+            verifyNoInteractions(folderRepository);
             verify(permissionRepository)
                 .findByFolder_IdInAndSharedWithUserIsNotNullOrderByCreatedAtDesc(folderIds);
         }
@@ -316,50 +309,6 @@ class SharingPermissionResolverTest {
     @DisplayName("Invalid folder hierarchy")
     class InvalidHierarchyTests {
 
-        @ParameterizedTest
-        @ValueSource(strings = {"not-a-uuid", "", " "})
-        @DisplayName("rejects malformed parent IDs before querying repositories")
-        void rejectsInvalidParentId(String parentId) {
-            folder.setParentFolder(parentId);
-
-            IllegalStateException exception = assertThrows(IllegalStateException.class,
-                () -> resolver.resolveForFolder(folder));
-
-            assertEquals("Folder hierarchy contains an invalid parent ID", exception.getMessage());
-            assertInstanceOf(IllegalArgumentException.class, exception.getCause());
-            verifyNoInteractions(folderRepository, permissionRepository);
-        }
-
-        @Test
-        @DisplayName("rejects an invalid parent ID on an ancestor")
-        void rejectsInvalidAncestorParentId() {
-            Folder parent = folder("Parent");
-            mockParent(folder, parent);
-            parent.setParentFolder("invalid-parent");
-
-            IllegalStateException exception = assertThrows(IllegalStateException.class,
-                () -> resolver.resolveForFolder(folder));
-
-            assertEquals("Folder hierarchy contains an invalid parent ID", exception.getMessage());
-            verifyNoInteractions(permissionRepository);
-        }
-
-        @Test
-        @DisplayName("reports FOLDER_NOT_FOUND when an ancestor does not exist")
-        void rejectsMissingAncestor() {
-            Folder parent = folder("Parent");
-            mockParent(folder, parent);
-            UUID missingId = UUID.randomUUID();
-            parent.setParentFolder(missingId.toString());
-            when(folderRepository.findById(missingId)).thenReturn(Optional.empty());
-
-            AppException exception = assertThrows(AppException.class,
-                () -> resolver.resolveForFolder(folder));
-
-            assertEquals(ErrorCode.FOLDER_NOT_FOUND, exception.getErrorCode());
-            verifyNoInteractions(permissionRepository);
-        }
-
         @Test
         @DisplayName("rejects a folder that is its own parent")
         void rejectsSelfReferencingFolder() {
@@ -369,7 +318,6 @@ class SharingPermissionResolverTest {
                 () -> resolver.resolveForFolder(folder));
 
             assertEquals("Folder hierarchy contains a cycle", exception.getMessage());
-            verify(folderRepository).findById(folder.getId());
             verifyNoInteractions(permissionRepository);
         }
 
@@ -380,14 +328,12 @@ class SharingPermissionResolverTest {
             Folder root = folder("Root");
             mockParent(folder, parent);
             mockParent(parent, root);
-            root.setParentFolder(parent.getId().toString());
+            root.setParent(parent);
 
             IllegalStateException exception = assertThrows(IllegalStateException.class,
                 () -> resolver.resolveForFolder(folder));
 
             assertEquals("Folder hierarchy contains a cycle", exception.getMessage());
-            verify(folderRepository, times(2)).findById(parent.getId());
-            verify(folderRepository).findById(root.getId());
             verifyNoInteractions(permissionRepository);
         }
     }

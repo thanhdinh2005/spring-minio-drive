@@ -18,8 +18,6 @@ import com.spring.backend.entity.Folder;
 import com.spring.backend.entity.Permission;
 import com.spring.backend.entity.User;
 import com.spring.backend.entity.enums.PermissionType;
-import com.spring.backend.exception.AppException;
-import com.spring.backend.exception.ErrorCode;
 import com.spring.backend.repository.FolderRepository;
 import com.spring.backend.repository.PermissionRepository;
 
@@ -153,29 +151,7 @@ public class SharingPermissionResolver {
 
             folderIds.add(folderId);
 
-            String parentId = current.getParentFolder();
-
-            if (parentId == null) {
-                break;
-            }
-
-            UUID parentUuid;
-
-            try {
-                parentUuid = UUID.fromString(parentId);
-            } catch (IllegalArgumentException exception) {
-                throw new IllegalStateException(
-                        "Folder hierarchy contains an invalid parent ID",
-                        exception
-                );
-            }
-
-            current = folderRepository.findById(parentUuid)
-                    .orElseThrow(
-                            () -> new AppException(
-                                    ErrorCode.FOLDER_NOT_FOUND
-                            )
-                    );
+            current = current.getParent();
         }
 
         return folderIds;

@@ -1,5 +1,7 @@
 package com.spring.backend.dto.folder;
 
+import java.util.UUID;
+
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 import lombok.AllArgsConstructor;
@@ -17,5 +19,5 @@ public class CreateFolderRequest {
   @Size(max = 255, message = "Folder name must not exceed 255 characters")
   private String name;
 
-  private String parentFolderName;
+  private UUID parentId;
 }

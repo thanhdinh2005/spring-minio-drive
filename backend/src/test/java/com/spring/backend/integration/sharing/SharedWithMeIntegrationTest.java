@@ -257,7 +257,7 @@ class SharedWithMeIntegrationTest extends AbstractIntegrationTest {
     private Folder createFolder(String name, User folderOwner, Folder parent) {
         return folderRepository.saveAndFlush(Folder.builder()
             .name(name + "-" + UUID.randomUUID()).owner(folderOwner)
-            .parentFolder(parent == null ? null : parent.getId().toString()).build());
+            .parent(parent).build());
     }
 
     private Permission saveShare(Folder target, User sharedWith, User grantor, PermissionType type) {

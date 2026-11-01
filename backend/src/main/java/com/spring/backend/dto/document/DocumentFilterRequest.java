@@ -10,6 +10,6 @@ public class DocumentFilterRequest {
   private String mimeType;
   private int pageNo = 0;
   private int pageSize = 10;
-  private String sortBy = "updated_at";
+  private String sortBy = "updatedAt";
   private String sortDir = "desc";
 }

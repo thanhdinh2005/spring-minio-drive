@@ -1,5 +1,6 @@
 package com.spring.backend.repository;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -20,6 +21,9 @@ public interface PermissionRepository extends JpaRepository<Permission, UUID> {
 
     @EntityGraph(attributePaths = {"sharedWithUser", "grantedBy"})
     List<Permission> findByFolder_IdAndSharedWithUserIsNotNullOrderByCreatedAtDesc(UUID folderId);
+
+    // Dọn quyền (share + public link) của folder bị xoá cứng, tránh FK chặn DELETE folder
+    void deleteByFolder_IdIn(Collection<UUID> folderIds);
 
     @EntityGraph(attributePaths = {
             "folder",

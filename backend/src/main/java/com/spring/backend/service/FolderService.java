@@ -28,7 +28,7 @@ public interface FolderService {
 
   FolderPathResponse getPath(UUID folderId, UUID userId);
 
-  FolderTreeResponse getTree(UUID userId, String parentFolderName);
+  FolderTreeResponse getTree(UUID userId, UUID parentId);
 
   FolderResponse update(UUID folderId, UpdateFolderRequest request, UUID userId);
 
@@ -40,5 +40,5 @@ public interface FolderService {
 
   void bulkMove(BulkMoveRequest request, UUID userId);
 
-  Page<FolderResponse> filterFolders(UUID userId, String name, String parentFolder, int pageNo, int pageSize, String sortBy, String sortDir);
+  Page<FolderResponse> filterFolders(UUID userId, String name, UUID parentId, int pageNo, int pageSize, String sortBy, String sortDir);
 }

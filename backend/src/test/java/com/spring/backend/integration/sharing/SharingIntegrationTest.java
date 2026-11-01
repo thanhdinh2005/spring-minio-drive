@@ -603,10 +603,10 @@ class SharingIntegrationTest extends AbstractIntegrationTest {
             saveShare(folder, PermissionType.EDIT);
             Folder selected = folderRepository.saveAndFlush(Folder.builder()
                 .name("Selected-" + UUID.randomUUID()).owner(owner)
-                .parentFolder(folder.getId().toString()).build());
+                .parent(folder).build());
             Folder child = folderRepository.saveAndFlush(Folder.builder()
                 .name("Child-" + UUID.randomUUID()).owner(owner)
-                .parentFolder(selected.getId().toString()).build());
+                .parent(selected).build());
             Permission direct = saveShare(selected, PermissionType.VIEW);
             saveShare(child, PermissionType.EDIT);
             permissionRepository.saveAndFlush(Permission.builder()
@@ -628,7 +628,7 @@ class SharingIntegrationTest extends AbstractIntegrationTest {
         void ancestorOwnerCannotManageSharesOfAnotherOwnersChild() throws Exception {
             Folder child = folderRepository.saveAndFlush(Folder.builder()
                 .name("OtherOwner-" + UUID.randomUUID()).owner(recipient)
-                .parentFolder(folder.getId().toString()).build());
+                .parent(folder).build());
             Permission direct = permissionRepository.saveAndFlush(Permission.builder()
                 .folder(child).sharedWithUser(owner).grantedBy(recipient)
                 .permissionType(PermissionType.VIEW).build());
@@ -689,7 +689,7 @@ class SharingIntegrationTest extends AbstractIntegrationTest {
         void ancestorOwnerCannotRevokePermissionOnAnotherOwnersChild() throws Exception {
             Folder child = folderRepository.saveAndFlush(Folder.builder()
                 .name("OtherOwner-" + UUID.randomUUID()).owner(recipient)
-                .parentFolder(folder.getId().toString()).build());
+                .parent(folder).build());
             Permission target = permissionRepository.saveAndFlush(Permission.builder()
                 .folder(child).sharedWithUser(owner).grantedBy(recipient)
                 .permissionType(PermissionType.EDIT).build());

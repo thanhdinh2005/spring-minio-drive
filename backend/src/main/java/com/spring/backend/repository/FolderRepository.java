@@ -19,48 +19,37 @@ import com.spring.backend.entity.Folder;
 @Repository
 public interface FolderRepository extends JpaRepository<Folder, UUID> {
 
-  // Lấy folder theo owner và parentFolder name
-  Optional<Folder> findByOwner_IdAndNameAndParentFolder(UUID ownerId, String name, String parentFolder);
-
-  // Lấy các folder con trực tiếp của một folder (theo parentFolder name)
-  List<Folder> findByOwner_IdAndParentFolder(UUID ownerId, String parentFolder);
+  // Lấy các folder con trực tiếp của một folder
+  List<Folder> findByParent_Id(UUID parentId);
 
   // Lấy các folder con trực tiếp của một folder, có phân trang
-  Page<Folder> findByOwner_IdAndParentFolder(UUID ownerId, String parentFolder, Pageable pageable);
+  Page<Folder> findByParent_Id(UUID parentId, Pageable pageable);
 
   // Kiểm tra sự tồn tại folder con
-  boolean existsByOwner_IdAndParentFolder(UUID ownerId, String parentFolder);
+  boolean existsByParent_Id(UUID parentId);
 
-  // Đếm số folder con trực tiếp của một folder
-  long countByOwner_IdAndParentFolder(UUID ownerId, String parentFolder);
-
-  // Lấy các folder gốc (parent_folder IS NULL) của một user
-  List<Folder> findByOwner_IdAndParentFolderIsNull(UUID ownerId);
-
-  // Lấy folder theo owner và ID (để check ownership)
-  Optional<Folder> findByIdAndOwner_Id(UUID id, UUID ownerId);
+  // Lấy các folder gốc (parent_id IS NULL) của một user
+  List<Folder> findByOwner_IdAndParentIsNull(UUID ownerId);
 
   // Lấy tất cả folder của user (dùng cho tree view)
   List<Folder> findByOwner_Id(UUID ownerId);
 
-  // Lọc folder theo điều kiện
+  // Lấy toàn bộ folder gốc bất kể owner, để sinh tên duy nhất trong cấp đích
+  List<Folder> findByParentIsNull();
+
+  // Lọc folder theo điều kiện; sort do Pageable quyết định (server-side)
+  // CAST(:name AS string): PostgreSQL suy tham số null untyped thành bytea -> "varchar ~~ bytea" khi :name null
   @Query("SELECT f FROM Folder f WHERE f.owner.id = :ownerId " +
-    "AND (:name IS NULL OR f.name LIKE CONCAT('%', :name, '%')) " +
-    "AND (:parentFolder IS NULL OR f.parentFolder = :parentFolder)")
+    "AND (:name IS NULL OR f.name LIKE CONCAT('%', CAST(:name AS string), '%')) " +
+    "AND (:parentId IS NULL OR f.parent.id = :parentId)")
   Page<Folder> filterFolders(@Param("ownerId") UUID ownerId,
     @Param("name") String name,
-    @Param("parentFolder") String parentFolder,
+    @Param("parentId") UUID parentId,
     Pageable pageable);
-
-  // Tìm folder descendants by parent folder names (để xóa đệ quy)
-  @Query("SELECT f FROM Folder f WHERE f.owner.id = :ownerId AND f.parentFolder IN :parentNames")
-  List<Folder> findByOwnerIdAndParentFolderIn(@Param("ownerId") UUID ownerId, @Param("parentNames") List<String> parentNames);
 
   @Lock(LockModeType.PESSIMISTIC_WRITE)
   @Query("select f from Folder f where f.id = :folderId")
   Optional<Folder> findByIdForUpdate(
           @Param("folderId") UUID folderId
   );
-
-  long countByOwner_IdAndName(UUID ownerId, String name);
 }
