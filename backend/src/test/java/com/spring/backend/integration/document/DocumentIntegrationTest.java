@@ -19,12 +19,16 @@ import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.transaction.annotation.Transactional;
+import software.amazon.awssdk.services.s3.S3Client;
 
-import java.util.ArrayList;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
+import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.multipart;
@@ -616,6 +620,68 @@ class DocumentIntegrationTest extends AbstractIntegrationTest {
                             .content(objectMapper.writeValueAsString(req)))
                     .andExpect(status().isNotFound())
                     .andExpect(jsonPath("$.code").value("ERR_FOLDER_001"));
+        }
+    }
+
+    @Nested
+    @DisplayName("POST /documents/{folderId} – upload success")
+    class UploadDocumentSuccessTests {
+
+        @Autowired
+        S3Client s3Client;
+
+        @Test
+        @DisplayName("201 Created, metadata saved and file actually stored on RustFS")
+        void uploadSuccess_storesObjectAndMetadata() throws Exception {
+            byte[] content = "%PDF-1.4 hello rustfs".getBytes(StandardCharsets.UTF_8);
+            var file = new MockMultipartFile(
+                    "file", "report 2026.pdf", "application/pdf", content);
+
+            long usageBefore = documentRepository.sumSizeByOwnerId(ownerId);
+
+            var result = mockMvc.perform(multipart("/documents/{folderId}", folderId)
+                            .file(file)
+                            .header("Authorization", authHeader()))
+                    .andExpect(status().isCreated())
+                    .andExpect(jsonPath("$.success").value(true))
+                    .andExpect(jsonPath("$.data.id").exists())
+                    .andExpect(jsonPath("$.data.name").value("report 2026.pdf"))
+                    .andExpect(jsonPath("$.data.mimeType").value("application/pdf"))
+                    .andExpect(jsonPath("$.data.size").value(content.length))
+                    .andExpect(jsonPath("$.data.folderId").value(folderId.toString()))
+                    .andExpect(jsonPath("$.data.ownerId").value(ownerId.toString()))
+                    .andReturn();
+
+            var data = objectMapper.readTree(
+                    result.getResponse().getContentAsString()).get("data");
+            String objectKey = data.get("objectKey").asText();
+            UUID docId = UUID.fromString(data.get("id").asText());
+
+            // objectKey format: {userId}/{folderId}/{uuid}_{sanitizedFileName}
+            assertTrue(objectKey.startsWith(ownerId + "/" + folderId + "/"),
+                    "objectKey must start with {userId}/{folderId}/ but was: " + objectKey);
+            assertTrue(objectKey.endsWith("_report 2026.pdf"),
+                    "objectKey must end with the sanitized file name but was: " + objectKey);
+
+            // metadata persisted in PostgreSQL
+            var saved = documentRepository.findById(docId).orElseThrow();
+            assertEquals(objectKey, saved.getObjectKey());
+            assertEquals(content.length, saved.getSize().intValue());
+            assertEquals(content.length,
+                    documentRepository.sumSizeByOwnerId(ownerId) - usageBefore);
+
+            // the file is actually stored on RustFS
+            try {
+                var head = s3Client.headObject(b -> b.bucket(BUCKET).key(objectKey));
+                assertEquals(content.length, head.contentLength());
+
+                byte[] stored = s3Client.getObjectAsBytes(
+                        b -> b.bucket(BUCKET).key(objectKey)).asByteArray();
+                assertArrayEquals(content, stored);
+            } finally {
+                // @Transactional rolls back the DB but not the object already written to S3
+                s3Client.deleteObject(b -> b.bucket(BUCKET).key(objectKey));
+            }
         }
     }
 }
