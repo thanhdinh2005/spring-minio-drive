@@ -92,20 +92,27 @@ Test dùng Testcontainers (PostgreSQL 17 + RustFS), nên **Docker phải đang c
 
 ## 7. Chạy toàn bộ stack bằng Docker
 
-Khi backend chạy trong Docker, `localhost` trỏ vào chính container — sửa `.env`:
-
-```env
-DB_HOST=postgres
-STORAGE_ENDPOINT=http://rustfs:9000
-```
-
-Sau đó:
+Compose tự override `DB_HOST=postgres` và `STORAGE_ENDPOINT=http://rustfs:9000` cho container backend
+(không cần sửa `.env`). Chỉ cần:
 
 ```powershell
 docker compose up -d --build
 ```
 
 Backend build từ `backend/Dockerfile`, chạy profile `prod` tại <http://localhost:8081/api> (Swagger bị tắt ở `prod`). Bucket vẫn phải tạo thủ công như bước 4.
+
+Xem log backend:
+
+```powershell
+# Log console (stdout của container)
+docker compose logs -f backend
+
+# Log JSON mount ra host (profile prod ghi cả console lẫn file)
+Get-Content logs\docker-backend\error-json.log -Tail 50 -Wait
+```
+
+Thư mục `logs/docker-backend/` trên host được bind vào `/app/logs` trong container
+(`app-json.log` cho toàn bộ log, `error-json.log` chỉ log ERROR).
 
 ## 8. Cấu trúc dự án
 
@@ -127,4 +134,6 @@ Backend build từ `backend/Dockerfile`, chạy profile `prod` tại <http://loc
 - **`NoSuchBucket`:** chưa tạo bucket ở bước 4 hoặc `STORAGE_BUCKET` sai.
 - **Lỗi chữ ký / 403:** `STORAGE_*` và `RUSTFS_*` không trùng nhau.
 - **Cổng bị chiếm:** đổi `APP_PORT`, `DB_PORT`, `RUSTFS_API_PORT`, `RUSTFS_CONSOLE_PORT` trong `.env`.
+- **Backend container exit code 1 / `docker compose logs` trống:** xem `logs\docker-backend\error-json.log`; nếu container cũ chưa mount thư mục host thì lấy log bằng `docker cp backend:/app/logs ./logs/backend-container`.
+- **`Connection to localhost:5432 refused`:** backend trong container đang dùng `DB_HOST=localhost`; compose đã override thành `postgres`, nếu tự chạy container/IDE thì kiểm tra lại biến này.
 - **Schema lệch sau khi sửa migration:** `docker compose down -v` để xóa volume rồi chạy lại (mất dữ liệu).
