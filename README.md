@@ -1,137 +1,130 @@
-# 🛠️ Hướng Dẫn Setup Local Development
+# spring-minio-drive
 
-Tài liệu hướng dẫn thiết lập và chạy dự án môi trường Local cho lập trình viên.
+Backend REST API cho dịch vụ lưu trữ "mini drive": quản lý folder/document, upload (multipart + presigned URL), chia sẻ và phân quyền, public link, thống kê dung lượng.
 
----
+- **Stack:** Java 21 · Spring Boot 4.0.8 · Spring Security + JWT · Spring Data JPA · PostgreSQL 16 · RustFS (S3-compatible) · Flyway · Docker Compose
+- **Code backend:** `backend/` — mọi API nằm dưới context path `/api`
+- **Tài liệu tham khảo:** `docs/`
 
-## 📋 1. Yêu Cầu Tiền Đề (Prerequisites)
+## 1. Yêu cầu
 
-Trước khi bắt đầu, đảm bảo máy bạn đã cài đặt sẵn các công cụ sau:
-
-| Công cụ | Phiên bản / Yêu cầu |
+| Công cụ | Ghi chú |
 | :--- | :--- |
-| **Java** | OpenJDK 21 trở lên |
-| **Build Tool** | Maven 3.x (hoặc dùng Maven Wrapper `mvnw` sẵn trong repo) |
-| **Container Engine** | Docker & Docker Compose |
-| **IDE** | IntelliJ IDEA (Khuyến nghị) hoặc VS Code |
+| JDK 21+ | Bắt buộc (pom cấu hình `java.version=21`) |
+| Docker Desktop | Chạy PostgreSQL, Adminer, RustFS và Testcontainers |
+| Git | Clone repo |
 
----
+Không cần cài Maven — dùng Maven Wrapper có sẵn (`mvnw` / `mvnw.cmd`).
 
-## ⚙️ 2. Hướng Dẫn Cấu Hình `.env`
+## 2. Cấu hình `.env`
 
-1. Tại thư mục **root** của dự án, tạo một file mới tên là `.env`.
-2. Sao chép toàn bộ nội dung cấu hình dưới đây vào file `.env`:
+```powershell
+Copy-Item .env.example .env
+```
+
+Mở `.env` và điền các biến bắt buộc:
+
+| Biến | Ý nghĩa |
+| :--- | :--- |
+| `DB_NAME`, `DB_USERNAME`, `DB_PASSWORD` | Database PostgreSQL được tạo khi khởi động container |
+| `SECRET_KEY` | Khóa ký JWT, dùng chuỗi đủ dài (≥ 32 ký tự) |
+| `STORAGE_ACCESS_KEY` / `STORAGE_SECRET_KEY` | Phải **trùng** với `RUSTFS_ACCESS_KEY` / `RUSTFS_SECRET_KEY` |
+| `STORAGE_BUCKET` | Tên bucket, phải khớp bucket tạo ở bước 4 |
+| `STORAGE_ENDPOINT` | `http://localhost:9000` khi chạy backend ngoài Docker |
+
+> `.env` đã nằm trong `.gitignore` — không commit lên Git.
+
+## 3. Khởi động hạ tầng
+
+```powershell
+docker compose up -d postgres adminer rustfs
+```
+
+| Dịch vụ | URL |
+| :--- | :--- |
+| PostgreSQL | `localhost:${DB_PORT}` (mặc định `5432`) |
+| Adminer (quản lý DB) | <http://localhost:8083> |
+| RustFS Console | <http://localhost:9001> |
+
+Đăng nhập Adminer: **System** `PostgreSQL`, **Server** `postgres`, còn user/password/database lấy từ `.env`.
+
+Lần chạy đầu, Flyway tự tạo schema (không cần import SQL thủ công).
+
+## 4. Tạo bucket trên RustFS
+
+Storage S3-compatible **không tự tạo bucket**. Mở RustFS Console (<http://localhost:9001>), đăng nhập bằng `RUSTFS_ACCESS_KEY` / `RUSTFS_SECRET_KEY`, tạo bucket trùng với `STORAGE_BUCKET` trong `.env`.
+
+Nếu bỏ qua bước này, các API upload/download sẽ trả lỗi `NoSuchBucket`.
+
+## 5. Chạy backend (profile `dev`)
+
+**PowerShell:**
+
+```powershell
+cd backend
+Get-Content ..\.env | Where-Object { $_ -match '^\s*[^#].*=' } | ForEach-Object {
+  $key, $value = $_ -split '=', 2
+  Set-Item "Env:$($key.Trim())" $value.Trim()
+}
+.\mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=dev
+```
+
+**IntelliJ IDEA:** chạy `BackendApplication` với profile `dev` và bật EnvFile trỏ tới `.env` ở thư mục root.
+
+Kiểm tra sau khi chạy:
+
+| Mục | URL |
+| :--- | :--- |
+| API base | <http://localhost:8081/api> |
+| Swagger UI (chỉ có ở `dev`) | <http://localhost:8081/api/swagger-ui.html> |
+| Health | <http://localhost:8081/api/actuator/health> |
+
+Đăng ký / đăng nhập: `POST /api/auth/register`, `POST /api/auth/login`.
+
+## 6. Chạy test
+
+```powershell
+cd backend
+.\mvnw.cmd clean verify -Dspring.profiles.active=test
+```
+
+Test dùng Testcontainers (PostgreSQL 17 + RustFS), nên **Docker phải đang chạy**; bucket test được tạo tự động trong test.
+
+## 7. Chạy toàn bộ stack bằng Docker
+
+Khi backend chạy trong Docker, `localhost` trỏ vào chính container — sửa `.env`:
 
 ```env
-# =========================
-# Database
-# =========================
-
-DB_NAME=app_db
-DB_USERNAME=postgre
-DB_PASSWORD=secret
-DB_PORT=5432
-DB_HOST=localhost
-
-
-# =========================
-# Application
-# =========================
-
-APP_PORT=8081
-ALLOWED_ORIGINS=http://localhost:5500
-
-
-# =========================
-# Security
-# =========================
-
-SECRET_KEY=7xK92mQaP4vLzN8sT1yR5uW0bH3cDfGk
-TOKEN_EXP=604800000
-REFRESH_EXP=604800000
-
-
-# =========================
-# Object Storage
-# =========================
-
-STORAGE_BUCKET=mini-drive
-STORAGE_REGION=us-east-1
-STORAGE_ACCESS_KEY=minioadmin
-STORAGE_SECRET_KEY=minioadmin123
-
-MINIO_ROOT_USER=minioadmin
-MINIO_ROOT_PASSWORD=minioadmin123
-
-MINIO_API_PORT=9000
-MINIO_CONSOLE_PORT=9001
-
-STORAGE_ENDPOINT=http://localhost:9000
+DB_HOST=postgres
+STORAGE_ENDPOINT=http://rustfs:9000
 ```
 
-> ⚠️ **LƯU Ý QUAN TRỌNG:**
-> - Có thể thay đổi `SECRET_KEY` hoặc mật khẩu tùy ý dưới local.
-> - **Tuyệt đối KHÔNG commit file `.env`** lên Git repository.
+Sau đó:
 
----
-
-## 🐳 3. Khởi Chạy Infrastructure (Docker Services)
-
-Dự án có 3 dịch vụ trong `docker-compose.yml`: `postgres`, `adminer`, và `backend`.
-
-### Thao tác thường ngày:
-Trong quá trình phát triển (Local Dev), chỉ cần chạy 2 dịch vụ **PostgreSQL** và **Adminer**:
-
-```bash
-docker compose up -d postgres adminer
+```powershell
+docker compose up -d --build
 ```
 
-*(Chỉ khi nào bạn cần build và kiểm thử toàn bộ ứng dụng bằng Docker Container thì mới bật dịch vụ `backend`).*
+Backend build từ `backend/Dockerfile`, chạy profile `prod` tại <http://localhost:8081/api> (Swagger bị tắt ở `prod`). Bucket vẫn phải tạo thủ công như bước 4.
 
-### Đăng nhập Adminer (Quản lý Database):
-- **URL truy cập:** [http://localhost:8083](http://localhost:8083)
-- **Thông số đăng nhập:**
-  - **System:** `PostgreSQL`
-  - **Server:** `postgres` *(tên container database)*
-  - **Username:** `postgre`
-  - **Password:** `secret`
-  - **Database:** `app_db`
-- *(Tùy chọn)* Tích vào **Permanent Login** để lưu phiên đăng nhập cho lần sau.
+## 8. Cấu trúc dự án
 
----
+| Đường dẫn | Nội dung |
+| :--- | :--- |
+| `backend/src/main/java/com/spring/backend/` | `controller`, `service`, `repository`, `entity`, `dto`, `config`, `security` |
+| `backend/src/main/resources/db/migration/` | Migration Flyway (`V1`, `V3`, `V4`, ...) |
+| `backend/src/main/resources/application*.yaml` | Cấu hình chung + profile `dev`, `prod`, `test` |
+| `backend/src/test/` | Unit test và integration test (Testcontainers) |
+| `docker-compose.yml` | postgres, adminer, rustfs, backend |
+| `.env.example` | Mẫu biến môi trường |
+| `docs/` | Ghi chú lý thuyết Spring, storage, Docker, CI/CD |
+| `docs/api/api-specs.md` | Đặc tả API (endpoint, request/response, mã lỗi) |
 
-## 🚀 4. Hướng Dẫn Chạy Application (Spring Boot)
+## 9. Lỗi thường gặp
 
-### Cách 1: Sử Dụng IntelliJ IDEA (Khuyến nghị)
-
-1. Mở dự án trong **IntelliJ IDEA**.
-2. Trên thanh công cụ, chọn **Edit Configurations...**
-3. Bấm dấu **`+`** ➔ Chọn **Spring Boot**.
-4. Chọn **Modify options** ➔ Tích chọn **Enable EnvFile** (hoặc thêm cấu hình nạp file `.env` ở thư mục root).
-5. Nhấn **Run** hoặc **Debug**.
-- Application sẽ lắng nghe tại: [http://localhost:8081/api](http://localhost:8081/api)
-
----
-
-### Cách 2: Sử Dụng Terminal / VS Code (Windows CMD)
-
-Nếu bạn không dùng IntelliJ, thực hiện theo các bước sau trên cửa sổ **CMD**:
-
-1. **Build file JAR:**
-   Di chuyển vào thư mục ứng dụng `backend` và thực hiện build bỏ qua test:
-   ```cmd
-   cd backend
-   mvnw.cmd clean package -DskipTests
-   ```
-
-2. **Nạp biến môi trường từ `.env`:**
-   Nạp toàn bộ biến từ file `.env` ở thư mục cha (`root`) vào Terminal session hiện tại:
-   ```cmd
-   for /f "tokens=*" %i in (..\.env) do set %i
-   ```
-
-3. **Khởi chạy ứng dụng:**
-   Chạy file JAR vừa được đóng gói trong thư mục `target` kèm profile active:
-   ```cmd
-   java -jar target backend-0.0.1-SNAPSHOT.jar --spring.profiles.active=dev
-   ```
+- **Startup fail vì thiếu biến môi trường:** `application-dev.yaml` không có default cho `STORAGE_BUCKET`, `STORAGE_ACCESS_KEY`, `STORAGE_SECRET_KEY` — nhớ nạp `.env` trước khi chạy.
+- **Không kết nối được PostgreSQL:** kiểm tra container `postgres` đang chạy và `DB_NAME`/`DB_USERNAME`/`DB_PASSWORD` khớp.
+- **`NoSuchBucket`:** chưa tạo bucket ở bước 4 hoặc `STORAGE_BUCKET` sai.
+- **Lỗi chữ ký / 403:** `STORAGE_*` và `RUSTFS_*` không trùng nhau.
+- **Cổng bị chiếm:** đổi `APP_PORT`, `DB_PORT`, `RUSTFS_API_PORT`, `RUSTFS_CONSOLE_PORT` trong `.env`.
+- **Schema lệch sau khi sửa migration:** `docker compose down -v` để xóa volume rồi chạy lại (mất dữ liệu).
