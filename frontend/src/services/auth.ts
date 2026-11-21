@@ -1,0 +1,55 @@
+import api from "./api";
+
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+export interface RegisterRequest {
+  email: string;
+  password: string;
+  displayName: string;
+}
+
+export interface TokenResponse {
+  accessToken: string;
+  expiredIn: number;
+}
+
+export interface RegisterResponse {
+  id: string;
+  email: string;
+  displayName: string;
+  plan: "FREE" | "PREMIUM";
+}
+
+export interface AppResponse<T> {
+  success: boolean;
+  status: number;
+  code?: string;
+  message?: string;
+  data: T;
+  timestamp: string;
+}
+
+export const login = async (
+  data: LoginRequest
+): Promise<TokenResponse> => {
+  const response = await api.post<AppResponse<TokenResponse>>(
+    "/auth/login",
+    data
+  );
+
+  return response.data.data;
+};
+
+export const register = async (
+  data: RegisterRequest
+): Promise<RegisterResponse> => {
+  const response = await api.post<AppResponse<RegisterResponse>>(
+    "/auth/register",
+    data
+  );
+
+  return response.data.data;
+};
