@@ -8,6 +8,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 import lombok.experimental.SuperBuilder;
+import java.time.Instant;
 
 @Entity
 @Table(name = "users")
@@ -42,4 +43,7 @@ public class User extends BaseEntity {
 
   @Column(name = "storage_limit", nullable = false)
   private Long storageLimit = 104857600L;
+
+  @Column(name = "premium_expires_at")
+  private Instant premiumExpiresAt;
 }

@@ -1,7 +1,6 @@
 package com.spring.backend.service.impl;
 
 import com.spring.backend.dto.admin.UpdateUserStatusResponse;
-import com.spring.backend.dto.auth.UpgradeResponse;
 import com.spring.backend.dto.auth.UserResponse;
 import com.spring.backend.dto.user.StorageUsageResponse;
 import com.spring.backend.entity.User;
@@ -150,58 +149,36 @@ class UserServiceImplTest {
     }
   }
 
-  @Nested
-  @DisplayName("upgradeToPremium")
-  class UpgradeToPremiumTests {
+   @Nested
+  @DisplayName("updateUserStatus")
+  class UpdateUserStatusTests {
 
     @Test
-    @DisplayName("Nâng cấp thành công lên PREMIUM với storageLimit 1073741824")
-    void upgradeToPremium_Success() {
+    @DisplayName("Thành công - cập nhật status sang LOCKED")
+    void updateUserStatus_Success() {
       given(userRepository.findById(userId)).willReturn(Optional.of(mockUser));
 
-      UpgradeResponse response = userService.upgradeToPremium(userId);
+      UpdateUserStatusResponse response =
+        userService.updateUserStatus(userId, Status.LOCKED);
 
       assertThat(response).isNotNull();
-      assertThat(response.getPlan()).isEqualTo(Plan.PREMIUM);
-      assertThat(response.getStorageLimit()).isEqualTo(1073741824L);
-      assertThat(mockUser.getPlan()).isEqualTo(Plan.PREMIUM);
-      assertThat(mockUser.getStorageLimit()).isEqualTo(1073741824L);
+      assertThat(response.getId()).isEqualTo(userId);
+      assertThat(response.getStatus()).isEqualTo(Status.LOCKED);
+      assertThat(mockUser.getStatus()).isEqualTo(Status.LOCKED);
 
       verify(userRepository).save(mockUser);
     }
 
-    @Nested
-    @DisplayName("updateUserStatus")
-    class UpdateUserStatusTests {
+    @Test
+    @DisplayName("Thất bại - user không tồn tại")
+    void updateUserStatus_UserNotFound() {
+      given(userRepository.findById(userId)).willReturn(Optional.empty());
 
-      @Test
-      @DisplayName("Thành công - cập nhật status sang LOCKED")
-      void updateUserStatus_Success() {
-        given(userRepository.findById(userId)).willReturn(Optional.of(mockUser));
+      assertThatThrownBy(() -> userService.updateUserStatus(userId, Status.LOCKED))
+        .isInstanceOf(AppException.class)
+        .hasFieldOrPropertyWithValue("errorCode", ErrorCode.USER_NOT_FOUND);
 
-        UpdateUserStatusResponse response = userService.updateUserStatus(userId, Status.LOCKED);
-
-        assertThat(response).isNotNull();
-        assertThat(response.getId()).isEqualTo(userId);
-        assertThat(response.getStatus()).isEqualTo(Status.LOCKED);
-        assertThat(mockUser.getStatus()).isEqualTo(Status.LOCKED);
-
-        verify(userRepository).save(mockUser);
-      }
-
-      @Test
-      @DisplayName("Thất bại - user không tồn tại -> throw AppException USER_NOT_FOUND")
-      void updateUserStatus_UserNotFound() {
-        given(userRepository.findById(userId)).willReturn(Optional.empty());
-
-        assertThatThrownBy(() -> userService.updateUserStatus(userId, Status.LOCKED))
-          .isInstanceOf(AppException.class)
-          .hasFieldOrPropertyWithValue("errorCode", ErrorCode.USER_NOT_FOUND);
-
-        verify(userRepository, never()).save(any());
-      }
+      verify(userRepository, never()).save(any());
     }
-
   }
-
 }

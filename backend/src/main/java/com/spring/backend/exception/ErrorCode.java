@@ -32,6 +32,31 @@ public enum ErrorCode {
   CANNOT_SHARE_WITHOUT_OWNERSHIP(HttpStatus.FORBIDDEN, "ERR_PERM_003", "Only the owner can share this folder"),
   INVALID_SHARE_PERMISSION(HttpStatus.BAD_REQUEST, "ERR_PERM_004",  "Share permission must be VIEW or EDIT"),
   CANNOT_SHARE_WITH_OWNER(HttpStatus.BAD_REQUEST, "ERR_PERM_005", "Cannot share a folder with its owner"),
+
+
+  // ===== Payment =====
+  PAYMENT_NOT_FOUND(
+    HttpStatus.NOT_FOUND,
+    "ERR_PAY_001",
+    "Payment transaction not found"
+  ),
+  PAYMENT_INVALID_SIGNATURE(
+    HttpStatus.BAD_REQUEST,
+    "ERR_PAY_002",
+    "Invalid payment signature"
+  ),
+  PAYMENT_INVALID_AMOUNT(
+    HttpStatus.BAD_REQUEST,
+    "ERR_PAY_003",
+    "Payment amount is invalid"
+  ),
+  PAYMENT_INVALID_TRANSACTION(
+    HttpStatus.CONFLICT,
+    "ERR_PAY_004",
+    "Payment transaction is invalid"
+  ),
+
+
   // ===== Request / fallback =====
   VALIDATION_ERROR(HttpStatus.BAD_REQUEST, "ERR_REQ_001", "Invalid request"),
   MALFORMED_REQUEST(HttpStatus.BAD_REQUEST, "ERR_REQ_002", "Malformed request body"),
