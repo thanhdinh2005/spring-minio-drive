@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Cloud, Eye, EyeOff, Lock, Mail } from "lucide-react";
-import { login } from "../services/auth";
+import { googleLogin, login } from "../services/auth";
+import { signInWithGoogle } from "../services/firebase";
 import "./Auth.css";
 
 function Login() {
@@ -12,6 +13,30 @@ function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+
+  const handleGoogleLogin = async () => {
+    setError("");
+    try {
+      setLoading(true);
+
+      const idToken = await signInWithGoogle();
+      const result = await googleLogin(idToken);
+
+      localStorage.setItem("accessToken", result.accessToken);
+      navigate("/", { replace: true });
+    } catch (err: any) {
+      // Firebase popup errors có dạng auth/popup-closed-by-user, auth/cancelled-popup...
+      if (typeof err?.code === "string" && err.code.startsWith("auth/")) {
+        setError("Đăng nhập Google bị hủy hoặc thất bại. Vui lòng thử lại.");
+      } else {
+        setError(
+          err.response?.data?.message || "Đăng nhập Google thất bại."
+        );
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -125,6 +150,22 @@ function Login() {
             {loading ? "Đang đăng nhập..." : "Đăng nhập"}
           </button>
         </form>
+
+        {import.meta.env.VITE_FIREBASE_PROJECT_ID && (
+          <>
+            <div className="auth-divider">
+              <span>hoặc</span>
+            </div>
+            <button
+              type="button"
+              className="auth-submit auth-google"
+              onClick={handleGoogleLogin}
+              disabled={loading}
+            >
+              Đăng nhập với Google
+            </button>
+          </>
+        )}
 
         <div className="auth-footer">
           Chưa có tài khoản?

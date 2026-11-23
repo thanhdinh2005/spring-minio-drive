@@ -13,6 +13,7 @@ import com.spring.backend.exception.ErrorCode;
 import com.spring.backend.repository.UserRepository;
 import com.spring.backend.security.CustomUserDetails;
 import com.spring.backend.service.AuthService;
+import com.spring.backend.service.impl.FirebaseTokenVerifier.FirebaseUserInfo;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
@@ -35,6 +36,7 @@ public class AuthServiceImpl implements AuthService {
   private final JwtService jwtService;
   private final UserRepository userRepository;
   private final PasswordEncoder passwordEncoder;
+  private final FirebaseTokenVerifier firebaseTokenVerifier;
 
   @Override
   public TokenResponse login(LoginRequest request) {
@@ -63,6 +65,32 @@ public class AuthServiceImpl implements AuthService {
       // Handle Wrong password or email
       throw new AppException(ErrorCode.UNAUTHORIZED);
     }
+  }
+
+  @Transactional
+  @Override
+  public TokenResponse loginWithFirebase(String idToken) {
+    FirebaseUserInfo firebaseUser = firebaseTokenVerifier.verify(idToken);
+
+    User user = userRepository.findByEmail(firebaseUser.email())
+        .orElseGet(() -> userRepository.save(User.builder()
+            .email(firebaseUser.email())
+            .passwordHash(passwordEncoder.encode(UUID.randomUUID().toString()))
+            .displayName(firebaseUser.name() != null ? firebaseUser.name() : firebaseUser.email())
+            .role(Role.USER)
+            .status(Status.ACTIVE)
+            .plan(Plan.FREE)
+            .storageUsed(0L)
+            .storageLimit(104857600L)
+            .build()));
+
+    String token = jwtService.generateAccessToken(user);
+    Long expiredIn = jwtService.getExpirationSeconds();
+
+    return TokenResponse.builder()
+        .accessToken(token)
+        .expiredIn(expiredIn)
+        .build();
   }
 
   @Transactional

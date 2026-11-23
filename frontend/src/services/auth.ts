@@ -43,6 +43,17 @@ export const login = async (
   return response.data.data;
 };
 
+export const googleLogin = async (
+  idToken: string
+): Promise<TokenResponse> => {
+  const response = await api.post<AppResponse<TokenResponse>>(
+    "/auth/google",
+    { idToken }
+  );
+
+  return response.data.data;
+};
+
 export const register = async (
   data: RegisterRequest
 ): Promise<RegisterResponse> => {

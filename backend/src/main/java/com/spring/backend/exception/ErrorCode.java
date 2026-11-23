@@ -11,6 +11,9 @@ public enum ErrorCode {
   USER_ALREADY_EXISTS(HttpStatus.CONFLICT, "ERR_USER_002", "Email already exists"),
   USER_LOCKED(HttpStatus.FORBIDDEN, "ERR_USER_003", "Account is locked"),
   INVALID_CREDENTIALS(HttpStatus.UNAUTHORIZED, "ERR_USER_004", "Invalid email or password"),
+  INVALID_FIREBASE_TOKEN(HttpStatus.UNAUTHORIZED, "ERR_USER_005", "Invalid Firebase credential"),
+  FIREBASE_EMAIL_NOT_VERIFIED(HttpStatus.UNAUTHORIZED, "ERR_USER_006", "Firebase email is not verified"),
+  FIREBASE_LOGIN_NOT_CONFIGURED(HttpStatus.INTERNAL_SERVER_ERROR, "ERR_USER_007", "Firebase login is not configured"),
 
   // ===== Folder =====
   FOLDER_NOT_FOUND(HttpStatus.NOT_FOUND, "ERR_FOLDER_001", "Folder not found"),

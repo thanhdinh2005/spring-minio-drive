@@ -25,6 +25,13 @@ public class AuthController {
     return ResponseEntity.ok(AppResponse.success(authService.login(request)));
   }
 
+  @PostMapping("/google")
+  public ResponseEntity<AppResponse<TokenResponse>> loginWithGoogle(
+    @Valid @RequestBody FirebaseLoginRequest request
+    ) {
+    return ResponseEntity.ok(AppResponse.success(authService.loginWithFirebase(request.getIdToken())));
+  }
+
   @PostMapping("/register")
   public ResponseEntity<AppResponse<RegisterResponse>> register(
     @Valid @RequestBody RegisterRequest request

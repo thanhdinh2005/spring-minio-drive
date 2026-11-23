@@ -60,6 +60,8 @@ application:
     jwt:
       expiration: ${TOKEN_EXP:3600000}
       refresh-expiration-ms: ${REFRESH_EXP:86400000}
+    firebase:
+      project-id: ${FIREBASE_PROJECT_ID:}
 
 storage:
   multipart-threshold: 5242880

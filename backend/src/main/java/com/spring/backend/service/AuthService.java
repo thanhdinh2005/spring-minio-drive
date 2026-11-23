@@ -7,5 +7,6 @@ import com.spring.backend.dto.auth.TokenResponse;
 
 public interface AuthService {
   TokenResponse login(LoginRequest request);
+  TokenResponse loginWithFirebase(String idToken);
   RegisterResponse register(RegisterRequest request);
 }
