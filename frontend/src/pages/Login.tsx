@@ -1,18 +1,27 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Cloud, Eye, EyeOff, Lock, Mail } from "lucide-react";
-import { googleLogin, login } from "../services/auth";
+import {
+  googleLogin,
+  login,
+  resendVerification,
+} from "../services/auth";
 import { signInWithGoogle } from "../services/firebase";
 import "./Auth.css";
 
 function Login() {
   const navigate = useNavigate();
+  const location = useLocation();
 
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(
+    (location.state as { email?: string } | null)?.email ?? ""
+  );
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [emailNotVerified, setEmailNotVerified] = useState(false);
+  const [resendInfo, setResendInfo] = useState("");
 
   const handleGoogleLogin = async () => {
     setError("");
@@ -38,11 +47,23 @@ function Login() {
     }
   };
 
+  const handleResendVerification = async () => {
+    setResendInfo("");
+    try {
+      await resendVerification(email);
+      setResendInfo("Đã gửi lại email xác thực. Kiểm tra hộp thư (và spam).");
+    } catch {
+      setResendInfo("Không gửi được email. Vui lòng thử lại sau.");
+    }
+  };
+
   const handleLogin = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError("");
+    setEmailNotVerified(false);
+    setResendInfo("");
 
-    if (email.length < 5 || email.length > 20) {
+    if (email.length < 5 || email.length > 40) {
       setError("Email phải có từ 5 đến 20 ký tự.");
       return;
     }
@@ -69,6 +90,9 @@ function Login() {
         "Đăng nhập thất bại. Vui lòng kiểm tra email và mật khẩu.";
 
       setError(message);
+      setEmailNotVerified(
+        err.response?.data?.code === "ERR_USER_008"
+      );
     } finally {
       setLoading(false);
     }
@@ -139,6 +163,22 @@ function Login() {
           {error && (
             <div className="auth-error" role="alert">
               {error}
+            </div>
+          )}
+
+          {emailNotVerified && (
+            <button
+              type="button"
+              className="auth-resend"
+              onClick={handleResendVerification}
+            >
+              Gửi lại email xác thực
+            </button>
+          )}
+
+          {resendInfo && (
+            <div className="auth-success" role="alert">
+              {resendInfo}
             </div>
           )}
 

@@ -14,7 +14,7 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 public class LoginRequest {
   @Email(message = "Email must be valid")
-  @Size(min = 5, max = 20, message = "Email cannot exceed 20 characters and at least 5 characters")
+  @Size(min = 5, max = 40, message = "Email cannot exceed 20 characters and at least 5 characters")
   private String email;
 
   @NotBlank(message = "Password is required")

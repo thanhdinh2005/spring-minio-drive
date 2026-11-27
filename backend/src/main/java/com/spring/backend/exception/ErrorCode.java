@@ -14,6 +14,8 @@ public enum ErrorCode {
   INVALID_FIREBASE_TOKEN(HttpStatus.UNAUTHORIZED, "ERR_USER_005", "Invalid Firebase credential"),
   FIREBASE_EMAIL_NOT_VERIFIED(HttpStatus.UNAUTHORIZED, "ERR_USER_006", "Firebase email is not verified"),
   FIREBASE_LOGIN_NOT_CONFIGURED(HttpStatus.INTERNAL_SERVER_ERROR, "ERR_USER_007", "Firebase login is not configured"),
+  EMAIL_NOT_VERIFIED(HttpStatus.FORBIDDEN, "ERR_USER_008", "Email is not verified. Please check your inbox and verify your account"),
+  INVALID_VERIFY_TOKEN(HttpStatus.BAD_REQUEST, "ERR_USER_009", "Invalid or expired verification token"),
 
   // ===== Folder =====
   FOLDER_NOT_FOUND(HttpStatus.NOT_FOUND, "ERR_FOLDER_001", "Folder not found"),

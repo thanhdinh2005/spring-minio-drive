@@ -54,6 +54,14 @@ export const googleLogin = async (
   return response.data.data;
 };
 
+export const verifyEmail = async (token: string): Promise<void> => {
+  await api.get("/auth/verify-email", { params: { token } });
+};
+
+export const resendVerification = async (email: string): Promise<void> => {
+  await api.post("/auth/resend-verification", { email });
+};
+
 export const register = async (
   data: RegisterRequest
 ): Promise<RegisterResponse> => {

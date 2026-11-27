@@ -42,4 +42,14 @@ public class User extends BaseEntity {
 
   @Column(name = "storage_limit", nullable = false)
   private Long storageLimit = 104857600L;
+
+  @Column(name = "email_verified", nullable = false)
+  private Boolean emailVerified = false;
+
+  // Lưu SHA-256 hash của token, không lưu raw token
+  @Column(name = "email_verify_token", length = 128)
+  private String emailVerifyToken;
+
+  @Column(name = "email_verify_token_expiry")
+  private java.time.Instant emailVerifyTokenExpiry;
 }

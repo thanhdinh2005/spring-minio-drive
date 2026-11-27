@@ -171,6 +171,22 @@
   background: #f8fafd;
 }
 
+.auth-resend {
+  width: 100%;
+  margin: -8px 0 14px;
+  padding: 8px;
+  border: none;
+  background: none;
+  color: #1a73e8;
+  font-size: 14px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.auth-resend:hover {
+  color: #174ea6;
+}
+
 .auth-footer {
   margin-top: 25px;
   text-align: center;
@@ -213,4 +229,64 @@
   color: #188038;
   font-size: 13px;
   line-height: 1.5;
+}
+
+/* ===== Verify Email page ===== */
+
+.verify-status {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 28px 0 10px;
+  text-align: center;
+}
+
+.verify-status p {
+  margin: 0;
+  color: #5f6368;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.verify-spinner {
+  color: #1a73e8;
+  animation: verify-spin 1s linear infinite;
+}
+
+.verify-icon-success {
+  color: #188038;
+}
+
+.verify-icon-error {
+  color: #c5221f;
+}
+
+.verify-message-success {
+  color: #188038 !important;
+  font-weight: 500;
+}
+
+.verify-message-error {
+  color: #c5221f !important;
+  font-weight: 500;
+}
+
+.verify-hint {
+  color: #9aa0a6 !important;
+  font-size: 13px !important;
+}
+
+.verify-login-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 18px;
+  text-decoration: none;
+}
+
+@keyframes verify-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
