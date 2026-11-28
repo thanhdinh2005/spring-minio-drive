@@ -1,41 +1,42 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import {
   Cloud,
   Eye,
   EyeOff,
   Lock,
   Mail,
+  MailCheck,
   User,
 } from "lucide-react";
-import { register } from "../services/auth";
+import { register, resendVerification } from "../services/auth";
 import "./Auth.css";
 
 function Register() {
-  const navigate = useNavigate();
-
   const [displayName, setDisplayName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
   const [loading, setLoading] = useState(false);
+  const [registeredEmail, setRegisteredEmail] = useState("");
+  const [resendInfo, setResendInfo] = useState("");
+  const [resending, setResending] = useState(false);
 
   const handleRegister = async (
     e: React.FormEvent<HTMLFormElement>
   ) => {
     e.preventDefault();
     setError("");
-    setSuccess("");
+    setResendInfo("");
 
     if (displayName.trim().length === 0) {
       setError("Vui lòng nhập họ tên.");
       return;
     }
 
-    if (email.length < 5 || email.length > 20) {
-      setError("Email phải có từ 5 đến 20 ký tự.");
+    if (email.length < 5 || email.length > 40) {
+      setError("Email phải có từ 5 đến 40 ký tự.");
       return;
     }
 
@@ -53,14 +54,7 @@ function Register() {
         password,
       });
 
-      setSuccess("Đăng ký thành công! Đang chuyển đến trang đăng nhập...");
-
-      setTimeout(() => {
-        navigate("/login", {
-          replace: true,
-          state: { email: email.trim() },
-        });
-      }, 1200);
+      setRegisteredEmail(email.trim());
     } catch (err: any) {
       const message =
         err.response?.data?.message ||
@@ -69,6 +63,19 @@ function Register() {
       setError(message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResend = async () => {
+    setResendInfo("");
+    setResending(true);
+    try {
+      await resendVerification(registeredEmail);
+      setResendInfo("Đã gửi lại email xác thực. Kiểm tra hộp thư (và spam).");
+    } catch {
+      setResendInfo("Không gửi được email. Vui lòng thử lại sau.");
+    } finally {
+      setResending(false);
     }
   };
 
@@ -83,12 +90,57 @@ function Register() {
           <span>Spring Mini Drive</span>
         </div>
 
-        <div className="auth-heading">
-          <h1>Tạo tài khoản mới</h1>
-          <p>Đăng ký để bắt đầu sử dụng không gian lưu trữ của bạn.</p>
-        </div>
+        {registeredEmail ? (
+          <>
+            <div className="auth-heading">
+              <h1>Kiểm tra email của bạn</h1>
+            </div>
 
-        <form onSubmit={handleRegister}>
+            <div className="verify-status">
+              <MailCheck size={44} className="verify-icon verify-icon-success" />
+
+              <p>
+                Chúng tôi đã gửi link xác thực tới{" "}
+                <strong>{registeredEmail}</strong>. Mở email và bấm vào link
+                để kích hoạt tài khoản, sau đó đăng nhập.
+              </p>
+
+              <p className="verify-hint">
+                Không thấy email? Kiểm tra cả hộp thư Spam/Promotions.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              className="auth-resend"
+              onClick={handleResend}
+              disabled={resending}
+            >
+              {resending ? "Đang gửi..." : "Gửi lại email xác thực"}
+            </button>
+
+            {resendInfo && (
+              <div className="auth-success" role="status">
+                {resendInfo}
+              </div>
+            )}
+
+            <Link
+              to="/login"
+              state={{ email: registeredEmail }}
+              className="auth-submit verify-login-link"
+            >
+              Đến trang đăng nhập
+            </Link>
+          </>
+        ) : (
+          <>
+            <div className="auth-heading">
+              <h1>Tạo tài khoản mới</h1>
+              <p>Đăng ký để bắt đầu sử dụng không gian lưu trữ của bạn.</p>
+            </div>
+
+            <form onSubmit={handleRegister}>
           <div className="auth-field">
             <label htmlFor="displayName">Họ và tên</label>
 
@@ -158,12 +210,6 @@ function Register() {
             </div>
           )}
 
-          {success && (
-            <div className="auth-success" role="status">
-              {success}
-            </div>
-          )}
-
           <button
             type="submit"
             className="auth-submit"
@@ -177,6 +223,8 @@ function Register() {
           Đã có tài khoản?
           <Link to="/login"> Đăng nhập</Link>
         </div>
+          </>
+        )}
 
         <div className="auth-copyright">
           © 2026 Spring Mini Drive

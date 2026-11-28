@@ -22,7 +22,7 @@ public class CustomUserDetailsService implements UserDetailsService {
   @Override
   @Transactional(readOnly = true)
   public UserDetails loadUserByUsername(String email) {
-    User user = userRepository.findByEmail(email)
+    User user = userRepository.findByEmail(email.toLowerCase())
       .orElseThrow(() -> new UsernameNotFoundException("User not found: " + email));
 
     Set<GrantedAuthority> authority = Set.of(

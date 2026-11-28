@@ -32,6 +32,7 @@ import Premium from "./pages/Premium";
 import Payment from "./pages/Payment";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
+import VerifyEmail from "./pages/VerifyEmail";
 import "./App.css";
 
 function Dashboard() {
@@ -326,6 +327,8 @@ function App() {
       <Route path="/login" element={<Login />} />
 
       <Route path="/register" element={<Register />} />
+
+      <Route path="/verify-email" element={<VerifyEmail />} />
 
       <Route
         path="/"

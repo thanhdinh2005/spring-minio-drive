@@ -80,6 +80,7 @@ class DocumentIntegrationTest extends AbstractIntegrationTest {
                 .plan(Plan.FREE)
                 .storageUsed(0L)
                 .storageLimit(104857600L)
+                .emailVerified(true)
                 .build();
         owner = userRepository.save(owner);
         ownerId = owner.getId();
@@ -153,6 +154,7 @@ class DocumentIntegrationTest extends AbstractIntegrationTest {
                     .plan(Plan.FREE)
                     .storageUsed(0L)
                     .storageLimit(104857600L)
+                    .emailVerified(true)
                     .build();
             other = userRepository.save(other);
 
@@ -215,6 +217,7 @@ class DocumentIntegrationTest extends AbstractIntegrationTest {
                     .plan(Plan.FREE)
                     .storageUsed(0L)
                     .storageLimit(104857600L)
+                    .emailVerified(true)
                     .build();
             other = userRepository.save(other);
 
@@ -300,6 +303,7 @@ class DocumentIntegrationTest extends AbstractIntegrationTest {
                     .plan(Plan.FREE)
                     .storageUsed(0L)
                     .storageLimit(104857600L)
+                    .emailVerified(true)
                     .build();
             other = userRepository.save(other);
 
@@ -349,6 +353,7 @@ class DocumentIntegrationTest extends AbstractIntegrationTest {
                     .plan(Plan.FREE)
                     .storageUsed(0L)
                     .storageLimit(104857600L)
+                    .emailVerified(true)
                     .build();
             other = userRepository.save(other);
 
@@ -403,6 +408,7 @@ class DocumentIntegrationTest extends AbstractIntegrationTest {
                     .plan(Plan.FREE)
                     .storageUsed(0L)
                     .storageLimit(104857600L)
+                    .emailVerified(true)
                     .build();
             other = userRepository.save(other);
 
@@ -448,6 +454,7 @@ class DocumentIntegrationTest extends AbstractIntegrationTest {
                     .plan(Plan.FREE)
                     .storageUsed(0L)
                     .storageLimit(104857600L)
+                    .emailVerified(true)
                     .build();
             other = userRepository.save(other);
 
@@ -490,6 +497,7 @@ class DocumentIntegrationTest extends AbstractIntegrationTest {
                     .plan(Plan.FREE)
                     .storageUsed(0L)
                     .storageLimit(104857600L)
+                    .emailVerified(true)
                     .build();
             other = userRepository.save(other);
 
@@ -549,6 +557,7 @@ class DocumentIntegrationTest extends AbstractIntegrationTest {
                     .plan(Plan.FREE)
                     .storageUsed(0L)
                     .storageLimit(104857600L)
+                    .emailVerified(true)
                     .build();
             other = userRepository.save(other);
 
@@ -590,6 +599,7 @@ class DocumentIntegrationTest extends AbstractIntegrationTest {
                     .plan(Plan.FREE)
                     .storageUsed(0L)
                     .storageLimit(104857600L)
+                    .emailVerified(true)
                     .build();
             other = userRepository.save(other);
 
