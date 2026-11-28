@@ -811,6 +811,7 @@ class SharingIntegrationTest extends AbstractIntegrationTest {
                 .plan(Plan.FREE)
                 .storageUsed(0L)
                 .storageLimit(104857600L)
+                .emailVerified(true)
                 .build());
         }
 

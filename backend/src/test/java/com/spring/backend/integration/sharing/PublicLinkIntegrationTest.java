@@ -369,7 +369,7 @@ class PublicLinkIntegrationTest extends AbstractIntegrationTest {
             .email("u" + UUID.randomUUID().toString().substring(0, 8) + "@test.com")
             .passwordHash(passwordEncoder.encode(PASSWORD)).displayName(name)
             .role(Role.USER).status(Status.ACTIVE).plan(Plan.FREE)
-            .storageUsed(0L).storageLimit(104857600L).build());
+            .storageUsed(0L).storageLimit(104857600L).emailVerified(true).build());
     }
 
     private Folder createFolder(String name, User user, Folder parent) {

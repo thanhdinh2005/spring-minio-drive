@@ -58,6 +58,7 @@ class UserServiceImplTest {
       .plan(Plan.FREE)
       .storageUsed(999999L) // intentionally different from documents sum to verify it's not read from user.storageUsed
       .storageLimit(104857600L)
+      .emailVerified(true)
       .build();
   }
 
