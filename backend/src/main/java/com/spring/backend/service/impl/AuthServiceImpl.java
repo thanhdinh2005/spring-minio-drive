@@ -19,6 +19,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.DisabledException;
+import org.springframework.security.authentication.LockedException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -79,6 +81,9 @@ public class AuthServiceImpl implements AuthService {
     } catch (BadCredentialsException e) {
       // Handle Wrong password or email
       throw new AppException(ErrorCode.UNAUTHORIZED);
+    } catch (DisabledException | LockedException e) {
+      // Account bị khóa (status != ACTIVE) -> USER_LOCKED
+      throw new AppException(ErrorCode.USER_LOCKED);
     }
   }
 
@@ -87,13 +92,14 @@ public class AuthServiceImpl implements AuthService {
   public TokenResponse loginWithFirebase(String idToken) {
     FirebaseUserInfo firebaseUser = firebaseTokenVerifier.verify(idToken);
 
-    User existing = userRepository.findByEmail(firebaseUser.email()).orElse(null);
+    String email = firebaseUser.email().toLowerCase();
+    User existing = userRepository.findByEmail(email).orElse(null);
     User user;
 
     if (existing == null) {
       // User mới từ Google: email đã được Google verify sẵn
       user = userRepository.save(User.builder()
-          .email(firebaseUser.email())
+          .email(email)
           .passwordHash(passwordEncoder.encode(UUID.randomUUID().toString()))
           .displayName(firebaseUser.name() != null ? firebaseUser.name() : firebaseUser.email())
           .role(Role.USER)
@@ -105,6 +111,9 @@ public class AuthServiceImpl implements AuthService {
           .build());
     } else {
       user = existing;
+      if (user.getStatus() != Status.ACTIVE) {
+        throw new AppException(ErrorCode.USER_LOCKED);
+      }
       if (!Boolean.TRUE.equals(user.getEmailVerified())) {
         // Google chứng minh sở hữu email -> chủ email thật chiếm lại account:
         // verify luôn và reset password để đá kẻ đăng ký trước ra ngoài
@@ -128,14 +137,16 @@ public class AuthServiceImpl implements AuthService {
   @Transactional
   @Override
   public RegisterResponse register(RegisterRequest request) {
-      if (userRepository.existsByEmail(request.getEmail())) {
+      String email = request.getEmail().trim().toLowerCase();
+
+      if (userRepository.existsByEmail(email)) {
         throw new AppException(ErrorCode.USER_ALREADY_EXISTS);
       }
 
       String rawToken = generateVerifyToken();
 
       User user = User.builder()
-        .email(request.getEmail())
+        .email(email)
         .passwordHash(passwordEncoder.encode(request.getPassword()))
         .displayName(request.getDisplayName())
         .role(Role.USER)
@@ -148,7 +159,13 @@ public class AuthServiceImpl implements AuthService {
         .emailVerifyTokenExpiry(Instant.now().plus(VERIFY_TOKEN_TTL_HOURS, ChronoUnit.HOURS))
         .build();
 
-      User savedUser = userRepository.save(user);
+      User savedUser;
+      try {
+        savedUser = userRepository.save(user);
+      } catch (DataIntegrityViolationException e) {
+        // Race condition: 2 request đăng ký cùng email đồng thời
+        throw new AppException(ErrorCode.USER_ALREADY_EXISTS);
+      }
 
       emailService.sendVerificationEmail(savedUser.getEmail(), rawToken);
 
@@ -181,7 +198,7 @@ public class AuthServiceImpl implements AuthService {
   @Override
   public void resendVerification(String email) {
     // Luôn trả success kể cả email không tồn tại — tránh lộ email đã đăng ký
-    userRepository.findByEmail(email).ifPresent(user -> {
+    userRepository.findByEmail(email.trim().toLowerCase()).ifPresent(user -> {
       if (Boolean.TRUE.equals(user.getEmailVerified())) {
         return;
       }

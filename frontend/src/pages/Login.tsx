@@ -64,7 +64,7 @@ function Login() {
     setResendInfo("");
 
     if (email.length < 5 || email.length > 40) {
-      setError("Email phải có từ 5 đến 20 ký tự.");
+      setError("Email phải có từ 5 đến 40 ký tự.");
       return;
     }
 

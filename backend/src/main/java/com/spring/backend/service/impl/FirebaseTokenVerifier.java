@@ -31,16 +31,21 @@ import java.util.concurrent.ConcurrentHashMap;
 @Slf4j
 public class FirebaseTokenVerifier {
 
+  // Public certs Google dùng ký Firebase ID token (public key -> không cần secret)
   private static final String CERTS_URL =
       "https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com";
+
+  // Chỉ chấp nhận token do đúng Firebase project của mình ký (iss + aud)
   private static final String EXPECTED_ISSUER_PREFIX = "https://securetoken.google.com/";
+
+  // Certs Google rotate định kỳ -> cache 1h
   private static final long CERTS_TTL_MS = 60 * 60 * 1000; // 1h
 
   private final RestClient restClient;
   private final ObjectMapper objectMapper = new ObjectMapper();
   private final String projectId;
 
-  private final Map<String, String> certCache = new ConcurrentHashMap<>();
+  private final Map<String, String> certCache = new ConcurrentHashMap<>(); // kid -> PEM cert
   private volatile long certsFetchedAt;
 
   public FirebaseTokenVerifier(
@@ -50,14 +55,18 @@ public class FirebaseTokenVerifier {
     this.projectId = projectId;
   }
 
+  /** Verify Firebase ID token -> trả email + name do Google chứng thực */
   public FirebaseUserInfo verify(String idToken) {
     if (projectId == null || projectId.isBlank()) {
       throw new AppException(ErrorCode.FIREBASE_LOGIN_NOT_CONFIGURED);
     }
 
+    // kid trong JWT header -> chọn đúng cert (header chưa verify, chỉ để lookup)
     String kid = extractKeyId(idToken);
     PublicKey publicKey = resolvePublicKey(kid, idToken);
 
+    // Verify chữ ký RS256 + expiry; fail thì fetch certs mới thử lại 1 lần
+    // (phòng Google vừa rotate key)
     Claims claims;
     try {
       claims = Jwts.parserBuilder()
@@ -66,7 +75,6 @@ public class FirebaseTokenVerifier {
           .parseClaimsJws(idToken)
           .getBody();
     } catch (JwtException e) {
-      // Cert có thể vừa rotate -> refresh và thử lại 1 lần
       publicKey = resolvePublicKey(kid, idToken, true);
       try {
         claims = Jwts.parserBuilder()
@@ -80,6 +88,7 @@ public class FirebaseTokenVerifier {
       }
     }
 
+    // Check iss/aud = projectId và email_verified = true
     String expectedIssuer = EXPECTED_ISSUER_PREFIX + projectId;
     if (!expectedIssuer.equals(claims.getIssuer())
         || !projectId.equals(claims.getAudience())) {
@@ -101,6 +110,7 @@ public class FirebaseTokenVerifier {
     return new FirebaseUserInfo(email, claims.get("name", String.class));
   }
 
+  /** Đọc "kid" (key id) từ JWT header — chưa verify, chỉ để chọn cert */
   private String extractKeyId(String idToken) {
     try {
       String[] parts = idToken.split("\\.");
@@ -123,6 +133,7 @@ public class FirebaseTokenVerifier {
     return resolvePublicKey(kid, idToken, false);
   }
 
+  /** Tìm cert theo kid trong cache; miss thì fetch từ Google. forceRefresh bỏ qua cache */
   private PublicKey resolvePublicKey(String kid, String idToken, boolean forceRefresh) {
     String pem = forceRefresh ? null : certCache.get(kid);
     if (pem == null) {
@@ -137,6 +148,7 @@ public class FirebaseTokenVerifier {
       throw new AppException(ErrorCode.INVALID_FIREBASE_TOKEN);
     }
     try {
+      // PEM cert -> PublicKey RSA để verify chữ ký
       CertificateFactory cf = CertificateFactory.getInstance("X.509");
       X509Certificate cert = (X509Certificate) cf.generateCertificate(
           new ByteArrayInputStream(pem.getBytes(StandardCharsets.UTF_8)));
@@ -146,6 +158,7 @@ public class FirebaseTokenVerifier {
     }
   }
 
+  /** Chỉ fetch certs mới khi cache quá 1h hoặc rỗng */
   private void refreshCerts() {
     if (System.currentTimeMillis() - certsFetchedAt < CERTS_TTL_MS
         && !certCache.isEmpty()) {
@@ -154,6 +167,7 @@ public class FirebaseTokenVerifier {
     fetchCerts();
   }
 
+  /** Fetch Map<kid, PEM> từ Google; synchronized -> chỉ fetch 1 lần khi nhiều request cùng miss */
   private void fetchCerts() {
     synchronized (this) {
       try {
@@ -174,6 +188,7 @@ public class FirebaseTokenVerifier {
     }
   }
 
+  /** Email + name đã được Google chứng thực */
   public record FirebaseUserInfo(String email, String name) {
   }
 }
